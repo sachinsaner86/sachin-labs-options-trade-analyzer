@@ -59,10 +59,11 @@ def build_positions(real_trades, split_map, get_contract_key):
                 avg_close_price = 0.0
             else:
                 priced_closes = [t for t in closes if t['price'] > 0]
+                close_qty_sum = sum(abs(t['quantity']) for t in priced_closes)
                 avg_close_price = (
                     sum(t['price'] * abs(t['quantity']) for t in priced_closes) /
-                    sum(abs(t['quantity']) for t in priced_closes)
-                ) if priced_closes else 0.0
+                    close_qty_sum
+                ) if priced_closes and close_qty_sum > 0 else 0.0
                 if 'Option Expired' in close_methods:
                     status = 'Partial Close + Expired'
                 elif 'Option Assigned' in close_methods:
@@ -83,7 +84,12 @@ def build_positions(real_trades, split_map, get_contract_key):
         else:
             days_held = 0
 
+        # Stable ID: contract_key + open_date (unique per position)
+        open_str = open_date.isoformat() if open_date else 'none'
+        position_id = f"{symbol}_{opt_type}_{expiration}_{strike}_{open_str}"
+
         pos_list.append({
+            'position_id': position_id,
             'contract_key': contract_key,
             'open_date': open_date,
             'close_date': close_date,

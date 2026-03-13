@@ -43,6 +43,12 @@ CSV upload  → core/parser.py   ──┘
 
 The normalized trade dict format is the contract between the two sources and `core/`. Both `etrade/models.py` and `core/parser.py` must produce dicts with the same keys: `date` (datetime), `activity_type`, `symbol`, `opt_type`, `expiration`, `strike`, `quantity`, `price`, `amount`, `commission`.
 
+### Position identity
+Each position gets a stable `position_id` string (`symbol_optType_expiration_strike_openDate`) in `build_positions()`. This ID is used by `detect_rolls()` for chain matching and by `callbacks.py` for serialization through `dcc.Store`. Never use Python `id()` for position identity — it breaks across serialization boundaries.
+
+### Roll chain data
+`detect_rolls()` returns a `chain_label_map` keyed by `position_id`, with values `{chain_index: int, chain_leg: int, label: str}`. The dashboard serializes `chain_index` and `chain_leg` as integers on each position dict, so the Rolls tab can reconstruct chains by grouping on `chain_index` and sorting by `chain_leg` (preserving the original detection order). Never reconstruct chain ordering from string labels or by re-sorting on dates.
+
 ### activity_type values
 `build_positions()` in `core/positions.py` only recognizes these exact strings:
 - **Opening:** `'Sold Short'`, `'Bought To Open'`

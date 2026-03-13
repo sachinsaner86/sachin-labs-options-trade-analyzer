@@ -92,6 +92,9 @@ def register_callbacks(app):
         # Build positions and serialize everything
         pos_list = build_positions(real_trades, split_map, get_key)
 
+        # Detect rolls before serializing (needs close_trades/open_trades)
+        chains, standalone, chain_label_map = detect_rolls(pos_list)
+
         # Serialize positions (convert datetimes, drop non-serializable fields)
         positions_data = []
         for p in pos_list:
@@ -99,12 +102,16 @@ def register_callbacks(app):
             pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
             pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
             pd['contract_key'] = list(p['contract_key'])
+            chain_info = chain_label_map.get(p['position_id'])
+            if chain_info:
+                pd['roll_chain'] = chain_info['label']
+                pd['chain_index'] = chain_info['chain_index']
+                pd['chain_leg'] = chain_info['chain_leg']
+            else:
+                pd['roll_chain'] = ''
+                pd['chain_index'] = -1
+                pd['chain_leg'] = -1
             positions_data.append(pd)
-
-        # Also detect rolls to add chain labels
-        chains, standalone, chain_label_map = detect_rolls(pos_list)
-        for i, pd in enumerate(positions_data):
-            pd['roll_chain'] = chain_label_map.get(id(pos_list[i]), '')
 
         return {
             'trades': _serialize_trades(real_trades),
@@ -240,17 +247,25 @@ def register_callbacks(app):
 
             pos_list = build_positions(real_trades, split_map, get_key)
 
+            # Detect rolls before serializing (needs close_trades/open_trades)
+            chains, standalone, chain_label_map = detect_rolls(pos_list)
+
             positions_data = []
             for p in pos_list:
                 pd = {k: v for k, v in p.items() if k not in ('close_trades', 'open_trades', 'contract_key')}
                 pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
                 pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
                 pd['contract_key'] = list(p['contract_key'])
+                chain_info = chain_label_map.get(p['position_id'])
+                if chain_info:
+                    pd['roll_chain'] = chain_info['label']
+                    pd['chain_index'] = chain_info['chain_index']
+                    pd['chain_leg'] = chain_info['chain_leg']
+                else:
+                    pd['roll_chain'] = ''
+                    pd['chain_index'] = -1
+                    pd['chain_leg'] = -1
                 positions_data.append(pd)
-
-            chains, standalone, chain_label_map = detect_rolls(pos_list)
-            for i, pd in enumerate(positions_data):
-                pd['roll_chain'] = chain_label_map.get(id(pos_list[i]), '')
 
             if not pos_list and real_trades:
                 # Find first option transaction to show its full structure
@@ -298,9 +313,18 @@ def register_callbacks(app):
         closed = [p for p in positions if p['status'] != 'Open']
         open_pos = [p for p in positions if p['status'] == 'Open']
         wins = [p for p in closed if p['total_pnl'] > 0]
+        losses = [p for p in closed if p['total_pnl'] < 0]
+        breakeven = len(closed) - len(wins) - len(losses)
         total_pnl = sum(p['total_pnl'] for p in positions)
 
-        win_rate = f"{len(wins)/len(closed)*100:.1f}%" if closed else '—'
+        if closed:
+            win_pct = len(wins) / len(closed) * 100
+            win_rate = f"{win_pct:.1f}% ({len(wins)}W/{len(losses)}L"
+            if breakeven:
+                win_rate += f"/{breakeven}BE"
+            win_rate += ")"
+        else:
+            win_rate = '—'
 
         monthly = build_monthly_data(trades)
         latest_month_net = monthly[-1]['net'] if monthly else 0
@@ -384,23 +408,23 @@ def register_callbacks(app):
 
         positions = data['positions']
 
-        # Rebuild chain info from the stored roll_chain labels
-        chains_by_label = {}
+        # Rebuild chains from structured chain_index / chain_leg fields
+        chains_by_index = {}
         for p in positions:
-            lbl = p.get('roll_chain', '')
-            if not lbl:
+            ci = p.get('chain_index', -1)
+            if ci < 0:
                 continue
-            chain_name = lbl.split(' (')[0]  # e.g. "Chain 1"
-            chains_by_label.setdefault(chain_name, []).append(p)
+            chains_by_index.setdefault(ci, []).append(p)
 
-        if not chains_by_label:
+        if not chains_by_index:
             return html.P('No roll chains detected.', className='text-muted')
 
         cards = []
-        for chain_name in sorted(chains_by_label.keys()):
-            chain = chains_by_label[chain_name]
-            # Sort by open date
-            chain.sort(key=lambda x: x['open_date'] or '')
+        for chain_idx in sorted(chains_by_index.keys()):
+            chain = chains_by_index[chain_idx]
+            # Sort by leg order (preserves original detect_rolls sequence)
+            chain.sort(key=lambda x: x.get('chain_leg', 0))
+            chain_name = f"Chain {chain_idx + 1}"
             first = chain[0]
             last = chain[-1]
             chain_pnl = sum(p['total_pnl'] for p in chain)
@@ -408,10 +432,18 @@ def register_callbacks(app):
 
             pnl_color = '#28a745' if chain_pnl >= 0 else '#dc3545'
 
-            # Build leg rows
+            # Build leg rows with roll credit/debit
             leg_rows = []
             for i, p in enumerate(chain):
                 role = 'Original' if i == 0 else f'Roll {i}' if i < len(chain) - 1 else f'Roll {i} (Final)'
+
+                # Calculate roll net credit/debit between legs
+                roll_net_str = ''
+                if i > 0:
+                    prev = chain[i - 1]
+                    roll_net = prev.get('total_close_amount', 0) + p.get('total_open_amount', 0)
+                    roll_net_str = format_currency(roll_net)
+
                 leg_rows.append(
                     html.Tr([
                         html.Td(role),
@@ -426,6 +458,11 @@ def register_callbacks(app):
                             format_currency(p['total_pnl']),
                             style={'color': '#28a745' if p['total_pnl'] >= 0 else '#dc3545',
                                    'fontWeight': 'bold'},
+                        ),
+                        html.Td(
+                            roll_net_str,
+                            style={'color': '#28a745' if roll_net_str and not roll_net_str.startswith('-') else '#dc3545',
+                                   'fontWeight': 'bold'} if roll_net_str else {},
                         ),
                         html.Td(p['status']),
                     ])
@@ -446,7 +483,8 @@ def register_callbacks(app):
                             html.Th('Leg'), html.Th('Open'), html.Th('Close'),
                             html.Th('Strike'), html.Th('Expiry'), html.Th('Qty'),
                             html.Th('Open $'), html.Th('Close $'),
-                            html.Th('P&L'), html.Th('Status'),
+                            html.Th('P&L'), html.Th('Roll Net'),
+                            html.Th('Status'),
                         ])),
                         html.Tbody(leg_rows),
                     ], bordered=True, hover=True, size='sm', className='mb-0',
