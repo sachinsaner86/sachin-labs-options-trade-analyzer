@@ -14,19 +14,6 @@ app = dash.Dash(
     title='Options Dashboard',
 )
 
-app.index_string = app.index_string.replace(
-    '</head>',
-    """<style>
-    .Select-value-label { color: #2dce89 !important; font-weight: 600 !important; }
-    .Select--single .Select-value .Select-value-label { color: #2dce89 !important; }
-    .Select--multi .Select-value { background: #1a4731 !important; border: 1px solid #2dce89 !important; }
-    .Select--multi .Select-value-label { color: #2dce89 !important; }
-    .Select-menu-outer { background-color: #1e1e1e !important; border: 1px solid #444 !important; }
-    .Select-option { background-color: #1e1e1e !important; color: #ccc !important; }
-    .Select-option.is-focused { background-color: #1a4731 !important; color: #2dce89 !important; }
-    .Select-option.is-selected { background-color: #1a4731 !important; color: #2dce89 !important; }
-    </style></head>""",
-)
 
 app.layout = build_layout()
 register_callbacks(app)

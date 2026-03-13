@@ -116,7 +116,7 @@ Tab 4: Settings
 - Fetch status indicator (shows trade/position counts or error messages inline)
 - Default date range pre-filled to last 90 days
 - `session-store` uses `localStorage` so auth persists across page reloads
-- Dark theme CSS for dropdowns and date picker
+- Dark theme CSS for dropdowns and date picker (updated for Dash 4.0.0 class names)
 
 ---
 

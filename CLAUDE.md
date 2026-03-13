@@ -63,9 +63,33 @@ If `activity_type` doesn't match, trades are silently ignored and positions will
 `fetch_api_data()` outputs to `fetch-status` span in the header. All errors and diagnostic messages (trade counts, activity types found, etc.) go there — never use bare `except: return no_update` as it hides bugs silently.
 
 ### CSS / dark theme
-The DARKLY Bootstrap theme controls most styling. Custom overrides are in `assets/custom.css` (auto-loaded by Dash) and injected via `app.index_string` in `app.py`. The `assets/` folder must be in the same directory as `app.py`.
+The DARKLY Bootstrap theme controls most styling. Custom overrides are in `assets/custom.css` (auto-loaded by Dash). The `assets/` folder must be in the same directory as `app.py`. Do **not** inject CSS via `app.index_string` — use `assets/custom.css` only.
+
+### Dash 4.0.0 component class names (installed version)
+Dash 4.0.0 completely rewrote Dropdown and DatePickerRange — they no longer use React Select or react-dates. All old `.Select-*` / `.DateInput_*` / `.DateRangePicker*` class names are gone.
+
+**Dropdown:**
+- `.dash-dropdown-wrapper` — outer container
+- `.dash-dropdown` — the trigger button
+- `.dash-dropdown-value-item` — selected value text (single or multi)
+- `.dash-dropdown-placeholder` — placeholder text
+- `.dash-dropdown-content` — the open menu
+- `.dash-dropdown-option` — each option row
+- `.dash-dropdown-option--focused` / `--selected` — state variants
+- `.dash-dropdown-actions` — row containing Select All / Deselect All
+- `.dash-dropdown-action-button` — the Select All and Deselect All buttons
+
+**DatePickerRange:**
+- `.dash-datepicker-input-wrapper` — the visible input bar
+- `.dash-datepicker` / `.dash-datepicker-input` — the inputs inside
+- `.dash-datepicker-content` — the calendar popup
+- `.dash-datepicker-calendar-wrapper` — inner calendar shell
+- `.dash-datepicker-calendar-day` — individual day cells (with `--selected`, `--in-range`, `--disabled` modifiers)
+- `.dash-datepicker-controls` — month/year nav row
+- `.dash-datepicker-month-nav` — prev/next arrow buttons
+- `.dash-datepicker-caret-icon` — dropdown arrow on the input
 
 ### Dash constraints
 - `allow_duplicate=True` on an Output requires `prevent_initial_call=True` or `prevent_initial_call='initial_duplicate'`
 - `dbc.Table` (v2.0.4+) does not accept `dark=True` — use `style=` instead
-- `html.Style` does not exist — inject CSS via `app.index_string` or `assets/`
+- `html.Style` does not exist — inject CSS via `assets/` only

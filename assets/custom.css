@@ -1,63 +1,81 @@
-/* Force green selected text in ALL Dash dropdowns - max specificity */
+/* Dash 4.0.0 dropdown styles */
 
-/* Single selected value */
-.dash-dropdown .Select--single > .Select-control .Select-value .Select-value-label,
-.dash-dropdown .Select.has-value.Select--single > .Select-control .Select-value .Select-value-label,
-.dash-dropdown .Select.has-value.is-pseudo-focused.Select--single > .Select-control .Select-value .Select-value-label,
-div[id="account-selector"] .Select-value-label,
-div[id="filter-symbol"] .Select-value-label,
-div[id="filter-status"] .Select-value-label,
-div[id="filter-direction"] .Select-value-label,
-.Select-value-label {
-    color: #2dce89 !important;
-    font-weight: 600 !important;
-}
+/* Selected value text → green */
+.dash-dropdown-value-item { color: #2dce89 !important; font-weight: 600 !important; }
+
+/* Placeholder → muted */
+.dash-dropdown-placeholder { color: #888 !important; }
+
+/* Dropdown menu background */
+.dash-dropdown-content { background-color: #1e1e1e !important; border: 1px solid #444 !important; }
+
+/* Options */
+.dash-dropdown-option { color: #e0e0e0 !important; background-color: #1e1e1e !important; }
+.dash-dropdown-option--focused { background-color: #1a4731 !important; color: #2dce89 !important; }
+.dash-dropdown-option--selected { background-color: #1a4731 !important; color: #2dce89 !important; }
 
 /* Multi-select chips */
-.Select--multi .Select-value {
-    background-color: #1a4731 !important;
-    border: 1px solid #2dce89 !important;
-}
+.dash-dropdown-value-item--multi { background: #1a4731 !important; border: 1px solid #2dce89 !important; }
 
-.Select--multi .Select-value-label {
-    color: #2dce89 !important;
-    font-weight: 600 !important;
-}
-
-.Select--multi .Select-value-icon {
-    border-right: 1px solid #2dce89 !important;
-    color: #2dce89 !important;
-}
-
-.Select--multi .Select-value-icon:hover {
-    background-color: #dc3545 !important;
-    color: #fff !important;
-}
-
-/* Dropdown menu options */
-.Select-menu-outer {
-    background-color: #1e1e1e !important;
-    border: 1px solid #444 !important;
-}
-
-.Select-option {
-    background-color: #1e1e1e !important;
-    color: #e0e0e0 !important;
-}
-
-.Select-option.is-focused {
-    background-color: #2a5a2a !important;
-    color: #2dce89 !important;
-}
-
-.Select-option.is-selected {
-    background-color: #1a4731 !important;
-    color: #2dce89 !important;
-}
-
-/* Date picker inputs */
-.DateInput_input {
-    color: #e0e0e0 !important;
+/* ── Date picker (Dash 4.0.0) ── */
+.dash-datepicker-input-wrapper {
     background-color: #2b2b2b !important;
-    border-color: #555 !important;
+    border: 1px solid #555 !important;
+    color: #e0e0e0 !important;
+}
+
+.dash-datepicker,
+.dash-datepicker-input {
+    background-color: #2b2b2b !important;
+    color: #e0e0e0 !important;
+}
+
+.dash-datepicker-input::placeholder { color: #888 !important; }
+
+/* calendar popup */
+.dash-datepicker-content,
+.dash-datepicker-calendar-wrapper,
+.dash-datepicker-portal .dash-datepicker-calendar-wrapper {
+    background-color: #2b2b2b !important;
+    border: 1px solid #555 !important;
+    color: #e0e0e0 !important;
+}
+
+/* month/year navigation */
+.dash-datepicker-controls { color: #e0e0e0 !important; }
+.dash-datepicker-controls .dash-dropdown-value-item { color: #e0e0e0 !important; font-weight: normal !important; }
+
+/* calendar days */
+.dash-datepicker-calendar-day {
+    background-color: #2b2b2b !important;
+    color: #e0e0e0 !important;
+}
+.dash-datepicker-calendar-day:hover { background-color: #1a4731 !important; color: #2dce89 !important; }
+.dash-datepicker-calendar-day--selected,
+.dash-datepicker-calendar-day--range-start,
+.dash-datepicker-calendar-day--range-end { background-color: #2dce89 !important; color: #121212 !important; }
+.dash-datepicker-calendar-day--in-range { background-color: #1a4731 !important; color: #2dce89 !important; }
+.dash-datepicker-calendar-day--disabled { color: #555 !important; }
+
+/* week headers */
+.dash-datepicker-calendar-week-header { color: #888 !important; }
+
+/* close / caret icons */
+.dash-datepicker-close-button,
+.dash-datepicker-caret-icon { color: #e0e0e0 !important; background-color: #2b2b2b !important; }
+
+/* ── Dropdown: Select All / Deselect All buttons ── */
+.dash-dropdown-actions {
+    border-top: 1px solid #444 !important;
+    border-bottom: 1px solid #444 !important;
+    background-color: #1e1e1e !important;
+}
+
+.dash-dropdown-action-button {
+    color: #2dce89 !important;
+}
+
+.dash-dropdown-action-button:hover {
+    color: #fff !important;
+    text-decoration: underline !important;
 }
