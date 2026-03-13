@@ -20,3 +20,17 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment
+.env
+
+# Data
+data/
+
+# Generated
+options_pl_analysis.png
