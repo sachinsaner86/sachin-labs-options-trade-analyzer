@@ -80,13 +80,15 @@ def register_callbacks(app):
     # ── CSV Upload -> parse trades ──
     @app.callback(
         Output('trades-store', 'data'),
+        Output('fetch-status', 'children', allow_duplicate=True),
+        Output('fetch-log-store', 'data', allow_duplicate=True),
         Input('csv-upload', 'contents'),
         State('csv-upload', 'filename'),
         prevent_initial_call=True,
     )
     def on_csv_upload(contents, filename):
         if not contents:
-            return no_update
+            return no_update, no_update, no_update
         content_type, content_string = contents.split(',')
         decoded = base64.b64decode(content_string).decode('utf-8')
         real_trades, split_map, get_key = parse_csv_content(decoded)
@@ -119,7 +121,7 @@ def register_callbacks(app):
             'trades': _serialize_trades(real_trades),
             'positions': positions_data,
             'filename': filename,
-        }
+        }, None, {'status': 'idle'}
 
     # ── E-Trade Auth: Start Flow ──
     @app.callback(
