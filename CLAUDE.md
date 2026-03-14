@@ -19,15 +19,7 @@ python options_pl_tracker.py
 
 **Always validate the app loads before telling the user to restart:**
 ```bash
-python -c "
-from dashboard.layout import build_layout
-from dashboard.callbacks import register_callbacks
-import dash, dash_bootstrap_components as dbc
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY], suppress_callback_exceptions=True)
-app.layout = build_layout()
-register_callbacks(app)
-print('OK')
-"
+python -c "import app; print('OK')"
 ```
 
 ## Architecture
