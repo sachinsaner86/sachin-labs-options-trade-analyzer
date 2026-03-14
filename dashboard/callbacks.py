@@ -4,6 +4,8 @@ import base64
 import json
 from datetime import datetime
 
+from etrade.chunked_fetch import chunk_date_range, fetch_all_chunks
+
 import dash_bootstrap_components as dbc
 from dash import html, callback, Input, Output, State, no_update, ctx
 
@@ -519,3 +521,123 @@ def register_callbacks(app):
 
         fig = monthly_income_chart(monthly)
         return fig, monthly
+
+    _register_fetch_panel_callback(app)
+
+
+def _register_fetch_panel_callback(app):
+    """Register the render_fetch_panel callback."""
+    @app.callback(
+        Output('fetch-status-panel', 'children'),
+        Input('fetch-log-store', 'data'),
+    )
+    def render_fetch_panel(log_data):
+        """Render the always-visible fetch status strip below the header."""
+        if not log_data or log_data.get('status') == 'idle':
+            return html.Div()
+
+        status = log_data.get('status', 'idle')
+        chunks_done = log_data.get('chunks_done', 0)
+        chunks_total = log_data.get('chunks_total', 1)
+        log = log_data.get('log', [])
+        summary = log_data.get('summary', {})
+
+        pct = int(chunks_done / max(chunks_total, 1) * 100)
+
+        if status == 'running':
+            icon = '⟳'
+            icon_color = '#17a2b8'
+            label = f'Fetching E-Trade data... ({chunks_done}/{chunks_total} chunks)'
+            bar_color = 'info'
+            animated = True
+            striped = True
+        elif status == 'done':
+            icon = '✓'
+            icon_color = '#28a745'
+            fetch_time = summary.get('fetch_time', '')
+            if fetch_time:
+                dt = datetime.fromisoformat(fetch_time)
+                time_str = dt.strftime('%b %d %Y, %I:%M%p')
+            else:
+                time_str = '—'
+            n_trades = summary.get('total_option_trades', 0)
+            n_pos = summary.get('total_positions', 0)
+            label = f'Last fetch: {time_str} — {n_trades} trades, {n_pos} positions'
+            bar_color = 'success'
+            animated = False
+            striped = False
+        else:  # error
+            icon = '✗'
+            icon_color = '#dc3545'
+            label = f'Fetch error: {summary.get("error", "Unknown error")}'
+            bar_color = 'danger'
+            animated = False
+            striped = False
+
+        summary_line = html.Div([
+            html.Span(icon, style={'color': icon_color, 'marginRight': '8px',
+                                   'fontSize': '1rem', 'fontWeight': 'bold'}),
+            html.Span(label, style={'fontSize': '0.85rem', 'color': '#e0e0e0'}),
+        ], className='d-flex align-items-center')
+
+        panel_children = []
+
+        if status == 'running':
+            panel_children.append(dbc.Progress(
+                value=pct,
+                label=f'{pct}%' if pct >= 10 else '',
+                color=bar_color,
+                animated=animated,
+                striped=striped,
+                style={'height': '18px', 'marginBottom': '6px'},
+            ))
+
+        panel_children.append(summary_line)
+
+        log_rows = []
+        for entry in log:
+            chunk_start = entry.get('chunk_start', '')[:10]
+            chunk_end = entry.get('chunk_end', '')[:10]
+            raw_txns = entry.get('raw_txns', 0)
+            entry_status = entry.get('status', 'done')
+            option_txns = entry.get('option_txns', '?')
+            row_icon = '✓' if entry_status == 'done' else '✗'
+            row_color = '#28a745' if entry_status == 'done' else '#dc3545'
+            log_rows.append(html.Div([
+                html.Span(f'{row_icon} ', style={'color': row_color}),
+                html.Span(f'{chunk_start} → {chunk_end}: ',
+                          style={'fontWeight': 'bold', 'color': '#ccc'}),
+                html.Span(f'{raw_txns} raw txns, {option_txns} option txns',
+                          style={'color': '#aaa'}),
+            ], style={'fontSize': '0.78rem', 'padding': '1px 0'}))
+
+        if status == 'running' and chunks_done < chunks_total:
+            log_rows.append(html.Div(
+                '  ⟳ fetching next chunk...',
+                style={'fontSize': '0.78rem', 'color': '#17a2b8', 'fontStyle': 'italic'},
+            ))
+
+        skipped = summary.get('skipped_activity_types', [])
+        if skipped:
+            log_rows.append(html.Div([
+                html.Span('⚠ Skipped activity types: ',
+                          style={'color': '#ffc107', 'fontWeight': 'bold'}),
+                html.Span(', '.join(skipped), style={'color': '#ffc107'}),
+            ], style={'fontSize': '0.78rem', 'padding': '2px 0'}))
+
+        if log_rows:
+            panel_children.append(html.Div(
+                log_rows,
+                style={'marginTop': '6px', 'paddingLeft': '16px',
+                       'maxHeight': '180px', 'overflowY': 'auto'},
+            ))
+
+        return dbc.Card(
+            dbc.CardBody(panel_children, style={'padding': '8px 14px'}),
+            style={
+                'backgroundColor': '#1a1a2e',
+                'border': '1px solid #333',
+                'borderRadius': '4px',
+                'marginBottom': '6px',
+            },
+        )
