@@ -327,8 +327,10 @@ def build_layout():
         dcc.Store(id='positions-store'),      # computed positions JSON
         dcc.Store(id='auth-state-store'),     # OAuth flow state
         dcc.Store(id='session-store', storage_type='local'),  # persists across reloads
+        dcc.Store(id='fetch-log-store', data={'status': 'idle'}),
 
         build_header(),
+        html.Div(id='fetch-status-panel'),
         build_upload_area(),
         build_api_auth_area(),
         build_kpi_row(),
