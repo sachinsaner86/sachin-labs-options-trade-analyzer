@@ -177,6 +177,7 @@ def _positions_tab():
                         {'name': 'Days Held', 'id': 'days_held', 'type': 'numeric'},
                         {'name': 'Status', 'id': 'status'},
                         {'name': 'Roll Chain', 'id': 'roll_chain'},
+                        {'name': '', 'id': 'analyze'},
                     ],
                     sort_action='native',
                     filter_action='native',
@@ -294,6 +295,142 @@ def _monthly_tab():
     )
 
 
+def _analyzer_tab():
+    """Tab 5: P&L Analyzer — heatmaps and Greeks for open positions."""
+    return dbc.Tab(
+        label='P&L Analyzer',
+        tab_id='tab-analyzer',
+        children=[
+            # Row 1: Position summary strip
+            html.Div(id='analyzer-summary-strip', className='mt-3 mb-2',
+                      children=html.P('Click "Analyze" on an open position in the Positions tab to begin.',
+                                      className='text-muted')),
+
+            # Row 2: Legs table (editable)
+            dbc.Card([
+                dbc.CardHeader('Position Legs'),
+                dbc.CardBody([
+                    dash_table.DataTable(
+                        id='analyzer-legs-table',
+                        columns=[
+                            {'name': '#', 'id': 'leg_num', 'editable': False},
+                            {'name': 'Type', 'id': 'type', 'presentation': 'dropdown'},
+                            {'name': 'Strike', 'id': 'strike', 'type': 'numeric'},
+                            {'name': 'Qty (+/-)', 'id': 'qty', 'type': 'numeric'},
+                            {'name': 'IV', 'id': 'iv', 'type': 'numeric'},
+                            {'name': 'Entry Price', 'id': 'entry_price', 'type': 'numeric'},
+                            {'name': 'Remove', 'id': 'remove', 'editable': False},
+                        ],
+                        data=[],
+                        editable=True,
+                        dropdown={
+                            'type': {
+                                'options': [
+                                    {'label': 'Call', 'value': 'call'},
+                                    {'label': 'Put', 'value': 'put'},
+                                ],
+                            },
+                        },
+                        style_table={'overflowX': 'auto'},
+                        style_header={
+                            'backgroundColor': '#343a40', 'color': 'white',
+                            'fontWeight': 'bold', 'fontSize': '0.85rem',
+                        },
+                        style_cell={
+                            'backgroundColor': '#1e1e1e', 'color': '#e0e0e0',
+                            'fontSize': '0.82rem', 'padding': '6px 10px',
+                            'border': '1px solid #444',
+                        },
+                        style_data_conditional=[
+                            {'if': {'column_id': 'remove'},
+                             'color': '#dc3545', 'cursor': 'pointer',
+                             'textAlign': 'center', 'fontWeight': 'bold'},
+                        ],
+                    ),
+                    dbc.Button('+ Add Leg', id='add-leg-btn', color='secondary',
+                               size='sm', className='mt-2'),
+                ]),
+            ], className='mb-3'),
+
+            # Row 3: Market inputs bar
+            dbc.Card([
+                dbc.CardBody(
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label('Spot Price', size='sm'),
+                            dbc.Input(id='analyzer-spot', type='number',
+                                      placeholder='Current price', size='sm'),
+                        ], width=2),
+                        dbc.Col([
+                            dbc.Label('DTE', size='sm'),
+                            html.Div(id='analyzer-dte-display',
+                                     className='form-control form-control-sm',
+                                     style={'backgroundColor': '#2b2b2b', 'color': '#e0e0e0',
+                                            'border': '1px solid #555'}),
+                        ], width=2),
+                        dbc.Col([
+                            dbc.Label('Risk-Free Rate', size='sm'),
+                            dbc.Input(id='analyzer-rate', type='number',
+                                      value=4.5, step=0.1, size='sm'),
+                        ], width=2),
+                        dbc.Col([
+                            dbc.Label('\u00a0', size='sm'),  # spacer
+                            html.Div(
+                                dbc.Button('Calculate', id='calculate-btn',
+                                           color='primary', size='sm'),
+                            ),
+                        ], width=2),
+                        dbc.Col([
+                            html.Div(id='analyzer-quote-status', className='mt-4',
+                                     style={'fontSize': '0.8rem'}),
+                        ], width=4),
+                    ], className='align-items-end'),
+                ),
+            ], className='mb-3'),
+
+            # Row 4: Heatmap + Greeks
+            dbc.Row([
+                dbc.Col(
+                    dcc.Loading(dcc.Graph(
+                        id='analyzer-heatmap',
+                        style={'height': '500px'},
+                        figure={'layout': {
+                            'template': 'plotly_dark',
+                            'paper_bgcolor': 'rgba(0,0,0,0)',
+                            'plot_bgcolor': 'rgba(0,0,0,0)',
+                            'annotations': [{'text': 'Click Calculate to generate heatmap',
+                                             'x': 0.5, 'y': 0.5, 'xref': 'paper', 'yref': 'paper',
+                                             'showarrow': False, 'font': {'size': 14, 'color': '#888'}}],
+                        }},
+                    )),
+                    width=7,
+                ),
+                dbc.Col([
+                    dcc.Graph(id='analyzer-delta', style={'height': '160px'},
+                              figure={'layout': {'template': 'plotly_dark',
+                                                 'paper_bgcolor': 'rgba(0,0,0,0)',
+                                                 'plot_bgcolor': 'rgba(0,0,0,0)'}}),
+                    dcc.Graph(id='analyzer-gamma', style={'height': '160px'},
+                              figure={'layout': {'template': 'plotly_dark',
+                                                 'paper_bgcolor': 'rgba(0,0,0,0)',
+                                                 'plot_bgcolor': 'rgba(0,0,0,0)'}}),
+                    dcc.Graph(id='analyzer-theta', style={'height': '160px'},
+                              figure={'layout': {'template': 'plotly_dark',
+                                                 'paper_bgcolor': 'rgba(0,0,0,0)',
+                                                 'plot_bgcolor': 'rgba(0,0,0,0)'}}),
+                    dcc.Graph(id='analyzer-vega', style={'height': '160px'},
+                              figure={'layout': {'template': 'plotly_dark',
+                                                 'paper_bgcolor': 'rgba(0,0,0,0)',
+                                                 'plot_bgcolor': 'rgba(0,0,0,0)'}}),
+                ], width=5),
+            ]),
+
+            # Row 5: Breakeven + max profit/loss summary
+            html.Div(id='analyzer-result-summary', className='mt-3'),
+        ],
+    )
+
+
 def _settings_tab():
     """Tab 4: Settings."""
     return dbc.Tab(
@@ -323,11 +460,12 @@ def build_layout():
     """Build the complete app layout."""
     return dbc.Container([
         # Stores for data passing between callbacks
-        dcc.Store(id='trades-store'),        # raw trades JSON
-        dcc.Store(id='positions-store'),      # computed positions JSON
+        dcc.Store(id='trades-store', storage_type='local'),   # raw trades JSON — persists across reloads
+        dcc.Store(id='positions-store'),                      # computed positions JSON
         dcc.Store(id='auth-state-store'),     # OAuth flow state
         dcc.Store(id='session-store', storage_type='local'),  # persists across reloads
         dcc.Store(id='fetch-log-store', data={'status': 'idle'}),
+        dcc.Store(id='analyzer-store'),
 
         build_header(),
         html.Div(id='fetch-status-panel'),
@@ -339,6 +477,7 @@ def build_layout():
             _positions_tab(),
             _rolls_tab(),
             _monthly_tab(),
+            _analyzer_tab(),
             _settings_tab(),
         ], id='main-tabs', active_tab='tab-positions'),
 
