@@ -25,7 +25,7 @@ def _parse_rows(rows):
 
         date_str = row[0].strip()
         try:
-            trade_date = datetime.strptime(date_str, '%m/%d/%Y')
+            trade_date = datetime.strptime(date_str, '%m/%d/%y')
         except ValueError:
             continue
 
@@ -42,7 +42,7 @@ def _parse_rows(rows):
         expiration = match.group(3)
         strike = float(match.group(4))
 
-        quantity = int(row[7].strip()) if row[7].strip() and row[7].strip() != '--' else 0
+        quantity = int(float(row[7].strip())) if row[7].strip() and row[7].strip() != '--' else 0
         price = float(row[8].strip()) if row[8].strip() and row[8].strip() != '--' else 0.0
         amount = float(row[9].strip()) if row[9].strip() and row[9].strip() != '--' else 0.0
         commission = float(row[10].strip()) if row[10].strip() and row[10].strip() != '--' else 0.0

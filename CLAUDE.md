@@ -19,15 +19,7 @@ python options_pl_tracker.py
 
 **Always validate the app loads before telling the user to restart:**
 ```bash
-python -c "
-from dashboard.layout import build_layout
-from dashboard.callbacks import register_callbacks
-import dash, dash_bootstrap_components as dbc
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY], suppress_callback_exceptions=True)
-app.layout = build_layout()
-register_callbacks(app)
-print('OK')
-"
+python -c "import app; print('OK')"
 ```
 
 ## Architecture
@@ -56,6 +48,10 @@ Each position gets a stable `position_id` string (`symbol_optType_expiration_str
 
 If `activity_type` doesn't match, trades are silently ignored and positions will be empty. This is the most common source of bugs when the E-Trade API returns unexpected field names.
 
+### E-Trade CSV format quirks (already fixed, don't revert)
+- **Date format**: E-Trade exports dates as `MM/DD/YY` (2-digit year) — parse with `'%m/%d/%y'`, not `'%m/%d/%Y'` (Python 3.13 raises `ValueError` on 2-digit year with `%Y`)
+- **Quantity**: exported as float string `'40.0'` — parse with `int(float(...))`, not `int(...)`
+
 ### E-Trade API field quirks (already fixed, don't revert)
 - `transactionType` is at the **top level** of the transaction object, not inside `brokerage`
 - Expiration is in separate fields: `product.expiryYear`, `product.expiryMonth`, `product.expiryDay` — there is no `product.expiryDate`
@@ -65,8 +61,27 @@ If `activity_type` doesn't match, trades are silently ignored and positions will
 ### Auth persistence
 `session-store` uses `storage_type='local'` (browser localStorage). On every page load, `check_saved_session()` in `callbacks.py` calls `etrade/auth.py:get_session()` which checks the Windows Credential Manager for a saved token and attempts renewal. If valid, the auth card auto-collapses. Tokens expire at midnight ET.
 
+### Background callbacks (fetch progress)
+`fetch_api_data()` runs as a Dash background callback using `DiskcacheManager`. Key facts:
+- Import: `from dash import DiskcacheManager` (Dash 4.0.0 name — `DiskcacheLongCallbackManager` does not exist)
+- Constructor param: `background_callback_manager=DiskcacheManager(cache)` (not `long_callback_manager=`)
+- Cache stored in `tempfile.gettempdir()` — **never use `./cache`** as Werkzeug's file watcher detects new cache files and restarts the server in an infinite loop
+- `set_progress` is injected as the first argument when `background=True` and `progress=Output(...)` is set
+- Background callbacks **cannot return Dash component objects** (no `html.Span` etc.) — worker runs in a separate process. Return strings or `None` only for non-store outputs
+
+`fetch-log-store` schema written by `set_progress`:
+```python
+{'status': 'idle' | 'running' | 'done' | 'error',
+ 'chunks_done': int, 'chunks_total': int,
+ 'log': [{'chunk_start': 'YYYY-MM-DD', 'chunk_end': 'YYYY-MM-DD',
+           'raw_txns': int, 'option_txns': int, 'status': 'done'}],
+ 'summary': {'total_raw_txns': int, 'total_option_trades': int,
+             'total_positions': int, 'skipped_activity_types': [],
+             'fetch_time': 'ISO-string', 'error': None | str}}
+```
+
 ### Callback error handling
-`fetch_api_data()` outputs to `fetch-status` span in the header. All errors and diagnostic messages (trade counts, activity types found, etc.) go there — never use bare `except: return no_update` as it hides bugs silently.
+`fetch_api_data()` is a background callback — errors are surfaced via `set_progress({'status': 'error', ...})` which triggers `render_fetch_panel` to show a red error strip. Never use bare `except: return no_update` as it hides bugs silently. CSV upload clears `fetch-status` and resets `fetch-log-store` to `{'status': 'idle'}` on each upload.
 
 ### CSS / dark theme
 The DARKLY Bootstrap theme controls most styling. Custom overrides are in `assets/custom.css` (auto-loaded by Dash). The `assets/` folder must be in the same directory as `app.py`. Do **not** inject CSS via `app.index_string` — use `assets/custom.css` only.
