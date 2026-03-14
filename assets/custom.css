@@ -1,135 +1,763 @@
-/* Dash 4.0.0 dropdown styles */
+/* ================================================================
+   OBSIDIAN TERMINAL — Options Dashboard Design System
+   Luxury dark fintech with electric cyan accents & glassmorphism
+   ================================================================ */
 
-/* Selected value text → green */
-.dash-dropdown-value-item { color: #2dce89 !important; font-weight: 600 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
 
-/* Placeholder → muted */
-.dash-dropdown-placeholder { color: #888 !important; }
+/* ── CSS Variables ── */
+:root {
+    --bg-abyss: #060910;
+    --bg-deep: #0d1117;
+    --bg-card: #161b22;
+    --bg-elevated: #1c2333;
+    --bg-input: #1c2333;
+    --border-subtle: rgba(99, 179, 237, 0.08);
+    --border-card: rgba(99, 179, 237, 0.12);
+    --border-focus: rgba(0, 212, 255, 0.4);
+    --cyan: #00d4ff;
+    --cyan-dim: #0891b2;
+    --cyan-glow: rgba(0, 212, 255, 0.15);
+    --cyan-bg: rgba(0, 212, 255, 0.06);
+    --mint: #00ff88;
+    --mint-dim: #059669;
+    --mint-bg: rgba(0, 255, 136, 0.08);
+    --coral: #ff6b6b;
+    --coral-dim: #dc2626;
+    --coral-bg: rgba(255, 107, 107, 0.08);
+    --amber: #ffb347;
+    --amber-dim: #d97706;
+    --amber-bg: rgba(255, 179, 71, 0.08);
+    --violet: #a78bfa;
+    --violet-bg: rgba(167, 139, 250, 0.08);
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --font-display: 'Sora', sans-serif;
+    --font-data: 'IBM Plex Mono', monospace;
+    --font-ui: 'DM Sans', sans-serif;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --glass: rgba(22, 27, 34, 0.7);
+    --glass-border: rgba(99, 179, 237, 0.1);
+}
 
-/* Dropdown menu background */
-.dash-dropdown-content { background-color: #1e1e1e !important; border: 1px solid #444 !important; }
+/* ── Global Reset & Base ── */
+body {
+    font-family: var(--font-ui) !important;
+    background: var(--bg-abyss) !important;
+    color: var(--text-primary) !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
 
-/* Options */
-.dash-dropdown-option { color: #e0e0e0 !important; background-color: #1e1e1e !important; }
-.dash-dropdown-option--focused { background-color: #1a4731 !important; color: #2dce89 !important; }
-.dash-dropdown-option--selected { background-color: #1a4731 !important; color: #2dce89 !important; }
+/* Subtle noise overlay for depth */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(0, 212, 255, 0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
 
-/* Multi-select chips */
-.dash-dropdown-value-item--multi { background: #1a4731 !important; border: 1px solid #2dce89 !important; }
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display) !important;
+    letter-spacing: -0.02em;
+}
 
-/* ── Date picker (Dash 4.0.0) ── */
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ── Navbar ── */
+.navbar {
+    background: linear-gradient(180deg, rgba(13, 17, 23, 0.95) 0%, rgba(6, 9, 16, 0.98) 100%) !important;
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-bottom: 1px solid var(--border-subtle) !important;
+    padding: 0.6rem 0 !important;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.navbar-brand {
+    font-family: var(--font-display) !important;
+    font-weight: 700 !important;
+    font-size: 1.15rem !important;
+    background: linear-gradient(135deg, var(--cyan) 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.03em;
+}
+
+/* ── Radio Toggle (CSV/API) ── */
+.form-check-input:checked {
+    background-color: var(--cyan) !important;
+    border-color: var(--cyan) !important;
+}
+.form-check-label {
+    font-family: var(--font-ui) !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    color: var(--text-secondary) !important;
+    transition: color var(--transition);
+}
+.form-check-input:checked + .form-check-label {
+    color: var(--text-primary) !important;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+    background: linear-gradient(135deg, var(--cyan-dim) 0%, var(--cyan) 100%) !important;
+    border: none !important;
+    font-family: var(--font-ui) !important;
+    font-weight: 600 !important;
+    font-size: 0.82rem !important;
+    letter-spacing: 0.01em;
+    border-radius: var(--radius-sm) !important;
+    padding: 0.4rem 1rem !important;
+    transition: all var(--transition) !important;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
+}
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 24px rgba(0, 212, 255, 0.3) !important;
+}
+
+.btn-light, .btn-secondary {
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-card) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-ui) !important;
+    font-weight: 500 !important;
+    font-size: 0.82rem !important;
+    border-radius: var(--radius-sm) !important;
+    transition: all var(--transition) !important;
+}
+.btn-light:hover, .btn-secondary:hover {
+    background: var(--bg-card) !important;
+    border-color: var(--cyan) !important;
+    color: var(--cyan) !important;
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--mint-dim) 0%, var(--mint) 100%) !important;
+    border: none !important;
+    font-family: var(--font-ui) !important;
+    font-weight: 600 !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+/* ── Cards (Glassmorphism) ── */
+.card {
+    background: var(--glass) !important;
+    backdrop-filter: blur(12px) saturate(1.1);
+    -webkit-backdrop-filter: blur(12px) saturate(1.1);
+    border: 1px solid var(--glass-border) !important;
+    border-radius: var(--radius-md) !important;
+    transition: all var(--transition);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+.card:hover {
+    border-color: rgba(0, 212, 255, 0.18) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.card-header {
+    background: rgba(0, 212, 255, 0.04) !important;
+    border-bottom: 1px solid var(--border-subtle) !important;
+    font-family: var(--font-display) !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    color: var(--text-primary) !important;
+    padding: 0.7rem 1rem !important;
+}
+
+.card-body {
+    padding: 1rem !important;
+}
+
+/* ── KPI Cards ── */
+.kpi-card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 1.1rem 1.2rem !important;
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition);
+}
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 212, 255, 0.25) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.kpi-card--cyan::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+.kpi-card--mint::before { background: linear-gradient(90deg, var(--mint), transparent); }
+.kpi-card--coral::before { background: linear-gradient(90deg, var(--coral), transparent); }
+.kpi-card--amber::before { background: linear-gradient(90deg, var(--amber), transparent); }
+.kpi-card--violet::before { background: linear-gradient(90deg, var(--violet), transparent); }
+
+.kpi-card .kpi-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    margin-bottom: 0.7rem;
+}
+.kpi-card--cyan .kpi-icon { background: var(--cyan-bg); color: var(--cyan); }
+.kpi-card--mint .kpi-icon { background: var(--mint-bg); color: var(--mint); }
+.kpi-card--coral .kpi-icon { background: var(--coral-bg); color: var(--coral); }
+.kpi-card--amber .kpi-icon { background: var(--amber-bg); color: var(--amber); }
+.kpi-card--violet .kpi-icon { background: var(--violet-bg); color: var(--violet); }
+
+.kpi-title {
+    font-family: var(--font-ui) !important;
+    font-size: 0.72rem !important;
+    font-weight: 500 !important;
+    color: var(--text-secondary) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem !important;
+}
+
+.kpi-value {
+    font-family: var(--font-data) !important;
+    font-size: 1.4rem !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.kpi-value--positive { color: var(--mint) !important; }
+.kpi-value--negative { color: var(--coral) !important; }
+.kpi-value--neutral { color: var(--text-primary) !important; }
+.kpi-value--cyan { color: var(--cyan) !important; }
+.kpi-value--amber { color: var(--amber) !important; }
+.kpi-value--violet { color: var(--violet) !important; }
+
+.kpi-subtitle {
+    font-family: var(--font-ui) !important;
+    font-size: 0.7rem !important;
+    color: var(--text-muted) !important;
+    margin-top: 0.25rem;
+}
+
+/* ── Tabs ── */
+.nav-tabs {
+    border-bottom: 1px solid var(--border-subtle) !important;
+    gap: 2px;
+}
+
+.nav-tabs .nav-link {
+    font-family: var(--font-display) !important;
+    font-weight: 500 !important;
+    font-size: 0.82rem !important;
+    color: var(--text-secondary) !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 0.65rem 1.1rem !important;
+    background: transparent !important;
+    transition: all var(--transition);
+    letter-spacing: -0.01em;
+    border-radius: 0 !important;
+}
+.nav-tabs .nav-link:hover {
+    color: var(--text-primary) !important;
+    background: rgba(0, 212, 255, 0.04) !important;
+    border-bottom-color: rgba(0, 212, 255, 0.3) !important;
+}
+.nav-tabs .nav-link.active {
+    color: var(--cyan) !important;
+    background: rgba(0, 212, 255, 0.06) !important;
+    border-bottom: 2px solid var(--cyan) !important;
+    font-weight: 600 !important;
+}
+
+.tab-content {
+    padding-top: 0.5rem;
+}
+
+/* ── DataTable ── */
+.dash-spreadsheet-container {
+    border-radius: var(--radius-md) !important;
+    overflow: hidden;
+    border: 1px solid var(--border-card) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+    background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-card) 100%) !important;
+    color: var(--text-secondary) !important;
+    font-family: var(--font-display) !important;
+    font-weight: 600 !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 10px 14px !important;
+    border-color: var(--border-subtle) !important;
+    border-bottom: 1px solid var(--border-card) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td {
+    background: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-data) !important;
+    font-size: 0.78rem !important;
+    padding: 8px 14px !important;
+    border-color: var(--border-subtle) !important;
+    transition: background var(--transition);
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td {
+    background: var(--bg-elevated) !important;
+}
+
+/* Active/selected row */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td.focused {
+    background: rgba(0, 212, 255, 0.08) !important;
+    outline: 1px solid var(--cyan) !important;
+}
+
+/* Filter row */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th input {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: var(--font-data) !important;
+    font-size: 0.75rem !important;
+}
+
+/* Pagination */
+.dash-table-container .previous-next-container {
+    font-family: var(--font-ui) !important;
+    color: var(--text-secondary) !important;
+}
+.dash-table-container .previous-next-container button {
+    color: var(--cyan) !important;
+}
+
+/* ── Dropdown (Dash 4.0.0) ── */
+.dash-dropdown {
+    background-color: var(--bg-input) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: var(--font-ui) !important;
+    font-size: 0.82rem !important;
+    transition: border-color var(--transition);
+    color: var(--text-primary) !important;
+}
+.dash-dropdown:hover,
+.dash-dropdown:focus-within {
+    border-color: var(--border-focus) !important;
+}
+
+.dash-dropdown-value-item {
+    color: var(--cyan) !important;
+    font-weight: 600 !important;
+    font-family: var(--font-ui) !important;
+}
+
+.dash-dropdown-placeholder {
+    color: var(--text-muted) !important;
+    font-family: var(--font-ui) !important;
+}
+
+.dash-dropdown-content {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-sm) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(12px);
+}
+
+.dash-dropdown-option {
+    color: var(--text-primary) !important;
+    background-color: transparent !important;
+    font-family: var(--font-ui) !important;
+    font-size: 0.82rem !important;
+    transition: all var(--transition);
+    padding: 6px 12px !important;
+}
+.dash-dropdown-option--focused {
+    background-color: var(--cyan-bg) !important;
+    color: var(--cyan) !important;
+}
+.dash-dropdown-option--selected {
+    background-color: rgba(0, 212, 255, 0.1) !important;
+    color: var(--cyan) !important;
+}
+
+.dash-dropdown-value-item--multi {
+    background: var(--cyan-bg) !important;
+    border: 1px solid rgba(0, 212, 255, 0.3) !important;
+    border-radius: 4px !important;
+    color: var(--cyan) !important;
+}
+
+.dash-dropdown-actions {
+    border-top: 1px solid var(--border-subtle) !important;
+    border-bottom: 1px solid var(--border-subtle) !important;
+    background-color: var(--bg-card) !important;
+}
+.dash-dropdown-action-button {
+    color: var(--cyan) !important;
+    font-family: var(--font-ui) !important;
+    font-size: 0.78rem !important;
+}
+.dash-dropdown-action-button:hover {
+    color: var(--text-primary) !important;
+}
+
+/* ── DatePickerRange (Dash 4.0.0) ── */
 .dash-datepicker-input-wrapper {
-    background-color: #2b2b2b !important;
-    border: 1px solid #555 !important;
-    color: #e0e0e0 !important;
+    background-color: var(--bg-input) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-sm) !important;
+    color: var(--text-primary) !important;
+    transition: border-color var(--transition);
+}
+.dash-datepicker-input-wrapper:focus-within {
+    border-color: var(--border-focus) !important;
 }
 
 .dash-datepicker,
 .dash-datepicker-input {
-    background-color: #2b2b2b !important;
-    color: #e0e0e0 !important;
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-data) !important;
+    font-size: 0.8rem !important;
 }
 
-.dash-datepicker-input::placeholder { color: #888 !important; }
+.dash-datepicker-input::placeholder { color: var(--text-muted) !important; }
 
-/* calendar popup */
 .dash-datepicker-content,
 .dash-datepicker-calendar-wrapper,
 .dash-datepicker-portal .dash-datepicker-calendar-wrapper {
-    background-color: #2b2b2b !important;
-    border: 1px solid #555 !important;
-    color: #e0e0e0 !important;
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5) !important;
 }
 
-/* month/year navigation */
-.dash-datepicker-controls { color: #e0e0e0 !important; }
-.dash-datepicker-controls .dash-dropdown-value-item { color: #e0e0e0 !important; font-weight: normal !important; }
+.dash-datepicker-controls { color: var(--text-primary) !important; }
+.dash-datepicker-controls .dash-dropdown-value-item {
+    color: var(--text-primary) !important;
+    font-weight: 500 !important;
+}
 
-/* calendar days */
 .dash-datepicker-calendar-day {
-    background-color: #2b2b2b !important;
-    color: #e0e0e0 !important;
+    background-color: transparent !important;
+    color: var(--text-primary) !important;
+    border-radius: 6px !important;
+    transition: all var(--transition);
 }
-.dash-datepicker-calendar-day:hover { background-color: #1a4731 !important; color: #2dce89 !important; }
+.dash-datepicker-calendar-day:hover {
+    background-color: var(--cyan-bg) !important;
+    color: var(--cyan) !important;
+}
 .dash-datepicker-calendar-day--selected,
 .dash-datepicker-calendar-day--range-start,
-.dash-datepicker-calendar-day--range-end { background-color: #2dce89 !important; color: #121212 !important; }
-.dash-datepicker-calendar-day--in-range { background-color: #1a4731 !important; color: #2dce89 !important; }
-.dash-datepicker-calendar-day--disabled { color: #555 !important; }
-
-/* week headers */
-.dash-datepicker-calendar-week-header { color: #888 !important; }
-
-/* close / caret icons */
+.dash-datepicker-calendar-day--range-end {
+    background: linear-gradient(135deg, var(--cyan-dim), var(--cyan)) !important;
+    color: var(--bg-abyss) !important;
+    font-weight: 600 !important;
+}
+.dash-datepicker-calendar-day--in-range {
+    background-color: var(--cyan-bg) !important;
+    color: var(--cyan) !important;
+}
+.dash-datepicker-calendar-day--disabled { color: var(--text-muted) !important; }
+.dash-datepicker-calendar-week-header { color: var(--text-secondary) !important; }
 .dash-datepicker-close-button,
-.dash-datepicker-caret-icon { color: #e0e0e0 !important; background-color: #2b2b2b !important; }
-
-/* ── Dropdown: Select All / Deselect All buttons ── */
-.dash-dropdown-actions {
-    border-top: 1px solid #444 !important;
-    border-bottom: 1px solid #444 !important;
-    background-color: #1e1e1e !important;
+.dash-datepicker-caret-icon {
+    color: var(--text-secondary) !important;
+    background-color: transparent !important;
 }
 
-.dash-dropdown-action-button {
-    color: #2dce89 !important;
+/* ── Upload Area ── */
+.upload-zone {
+    border: 2px dashed var(--border-card) !important;
+    border-radius: var(--radius-md) !important;
+    background: var(--bg-card) !important;
+    transition: all var(--transition);
+    cursor: pointer;
+}
+.upload-zone:hover {
+    border-color: var(--cyan) !important;
+    background: var(--cyan-bg) !important;
 }
 
-.dash-dropdown-action-button:hover {
-    color: #fff !important;
-    text-decoration: underline !important;
+/* ── Labels ── */
+label, .form-label {
+    font-family: var(--font-ui) !important;
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    color: var(--text-secondary) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
-/* ── P&L Analyzer: editable legs DataTable ── */
-#analyzer-legs-table .dash-spreadsheet-inner input {
-    background-color: #2b2b2b !important;
-    color: #e0e0e0 !important;
-    border: 1px solid #555 !important;
+/* ── Inputs ── */
+.form-control, .form-control-sm {
+    background-color: var(--bg-input) !important;
+    border: 1px solid var(--border-card) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-data) !important;
+    font-size: 0.82rem !important;
+    border-radius: var(--radius-sm) !important;
+    transition: border-color var(--transition);
+}
+.form-control:focus, .form-control-sm:focus {
+    border-color: var(--border-focus) !important;
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1) !important;
 }
 
-/* DataTable inline dropdown: show selected value text */
-#analyzer-legs-table .dash-dropdown {
-    background-color: #1e1e1e !important;
-    color: #e0e0e0 !important;
-    border: none !important;
+/* ── Badges ── */
+.badge {
+    font-family: var(--font-ui) !important;
+    font-weight: 600 !important;
+    font-size: 0.7rem !important;
+    letter-spacing: 0.02em;
+    border-radius: 4px !important;
+    padding: 3px 8px !important;
+}
+.badge.bg-success, .bg-success {
+    background: var(--mint-bg) !important;
+    color: var(--mint) !important;
+    border: 1px solid rgba(0, 255, 136, 0.2);
+}
+.badge.bg-danger { background: var(--coral-bg) !important; color: var(--coral) !important; }
+.badge.bg-warning { background: var(--amber-bg) !important; color: var(--amber) !important; }
+.badge.bg-info { background: var(--cyan-bg) !important; color: var(--cyan) !important; }
+
+/* ── Progress Bar ── */
+.progress {
+    background-color: var(--bg-deep) !important;
+    border-radius: 20px !important;
+    overflow: hidden;
+}
+.progress-bar {
+    border-radius: 20px !important;
+    font-family: var(--font-data) !important;
+    font-size: 0.7rem !important;
+    font-weight: 600 !important;
+}
+.progress-bar.bg-info {
+    background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)) !important;
+}
+.progress-bar.bg-success {
+    background: linear-gradient(90deg, var(--mint-dim), var(--mint)) !important;
+}
+.progress-bar.bg-danger {
+    background: linear-gradient(90deg, var(--coral-dim), var(--coral)) !important;
 }
 
-#analyzer-legs-table .dash-dropdown-value-item {
-    color: #e0e0e0 !important;
-    font-weight: normal !important;
+/* ── Fetch Panel ── */
+.fetch-panel {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 0.7rem 1rem !important;
+    margin-bottom: 0.5rem;
 }
 
-#analyzer-legs-table .dash-dropdown-placeholder {
-    color: #888 !important;
+/* ── Positions Table P&L Colors ── */
+#positions-table td[data-dash-column="total_pnl"] .dash-cell-value {
+    font-weight: 600 !important;
 }
 
-#analyzer-legs-table .dash-dropdown-content {
-    background-color: #1e1e1e !important;
-    border: 1px solid #555 !important;
-}
-
-#analyzer-legs-table .dash-dropdown-option {
-    color: #e0e0e0 !important;
-    background-color: #1e1e1e !important;
-}
-
-#analyzer-legs-table .dash-dropdown-option--focused,
-#analyzer-legs-table .dash-dropdown-option--selected {
-    background-color: #2d3748 !important;
-    color: #2dce89 !important;
-}
-
-/* ── Analyze cell in positions table (plain text, no link) ── */
+/* ── Analyze Cell ── */
 #positions-table td[data-dash-column="analyze"] .dash-cell-value {
-    color: #17a2b8;
+    color: var(--cyan);
+    font-family: var(--font-ui) !important;
     font-weight: 600;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     cursor: pointer;
     text-align: center;
+    padding: 2px 10px;
+    border-radius: 4px;
+    transition: all var(--transition);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+#positions-table td[data-dash-column="analyze"]:hover .dash-cell-value {
+    color: var(--bg-abyss);
+    background: linear-gradient(135deg, var(--cyan-dim), var(--cyan));
+    box-shadow: 0 0 16px rgba(0, 212, 255, 0.3);
 }
 
-#positions-table td[data-dash-column="analyze"]:hover .dash-cell-value {
-    color: #fff;
-    background-color: #17a2b8;
-    border-radius: 3px;
+/* ── P&L Analyzer: Legs Table ── */
+#analyzer-legs-table .dash-spreadsheet-inner input {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: 4px !important;
+    font-family: var(--font-data) !important;
+}
+
+#analyzer-legs-table .dash-dropdown {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+}
+#analyzer-legs-table .dash-dropdown-value-item {
+    color: var(--text-primary) !important;
+    font-weight: 500 !important;
+}
+#analyzer-legs-table .dash-dropdown-placeholder {
+    color: var(--text-muted) !important;
+}
+#analyzer-legs-table .dash-dropdown-content {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border-card) !important;
+}
+#analyzer-legs-table .dash-dropdown-option {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-card) !important;
+}
+#analyzer-legs-table .dash-dropdown-option--focused,
+#analyzer-legs-table .dash-dropdown-option--selected {
+    background-color: var(--cyan-bg) !important;
+    color: var(--cyan) !important;
+}
+
+/* ── Rolls Tab ── */
+.roll-chain-card {
+    border-left: 3px solid var(--cyan) !important;
+}
+.roll-chain-card .card-header {
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.06) 0%, transparent 100%) !important;
+}
+
+/* ── Bootstrap Table (used in rolls) ── */
+.table {
+    color: var(--text-primary) !important;
+    font-family: var(--font-data) !important;
+    font-size: 0.78rem !important;
+    --bs-table-bg: var(--bg-card) !important;
+    --bs-table-striped-bg: var(--bg-elevated) !important;
+    --bs-table-hover-bg: rgba(0, 212, 255, 0.04) !important;
+    --bs-table-border-color: var(--border-subtle) !important;
+}
+.table th {
+    font-family: var(--font-display) !important;
+    font-weight: 600 !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary) !important;
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-subtle) !important;
+}
+.table td {
+    border-color: var(--border-subtle) !important;
+    vertical-align: middle;
+}
+
+/* ── Text utilities ── */
+.text-muted { color: var(--text-secondary) !important; }
+.text-primary { color: var(--cyan) !important; }
+.text-success { color: var(--mint) !important; }
+.text-danger { color: var(--coral) !important; }
+.text-warning { color: var(--amber) !important; }
+.text-info { color: var(--cyan) !important; }
+.text-white { color: var(--text-primary) !important; }
+
+/* ── Summary strip (analyzer) ── */
+.analyzer-summary {
+    font-family: var(--font-display) !important;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.06) 0%, transparent 60%) !important;
+    border-left: 3px solid var(--cyan);
+    padding: 0.7rem 1rem;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* ── Graph containers ── */
+.js-plotly-plot {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+/* ── Loading spinners ── */
+.dash-spinner {
+    border-top-color: var(--cyan) !important;
+}
+._dash-loading {
+    color: var(--cyan) !important;
+}
+
+/* ── Container spacing ── */
+.container-fluid {
+    background-color: var(--bg-abyss) !important;
+}
+
+/* ── Tooltip-like hover states ── */
+[data-dash-is-loading="true"] {
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
+/* ── Auth card ── */
+.auth-card {
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-md) !important;
+    background: var(--bg-card) !important;
+}
+
+/* ── Hr dividers ── */
+hr {
+    border-color: var(--border-subtle) !important;
+    opacity: 0.5;
+}
+
+/* ── Open position row highlight ── */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr td {
+    transition: background-color 0.15s ease;
+}
+
+/* ── Settings tab ── */
+.settings-card h5 {
+    font-family: var(--font-display) !important;
+    color: var(--text-primary) !important;
+    font-weight: 600;
+}
+.settings-card h6 {
+    font-family: var(--font-display) !important;
+    color: var(--text-secondary) !important;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+/* ── Equity curve area ── */
+.equity-curve-wrapper {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    padding: 0;
+    overflow: hidden;
 }

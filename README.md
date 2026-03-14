@@ -1,6 +1,8 @@
 # Options Trading Dashboard
 
-A local web dashboard and Python toolkit for analyzing options trades. Upload an E-Trade CSV or connect directly via the E-Trade API to view positions, roll chains, and monthly income with interactive charts and tables.
+A local web dashboard and Python toolkit for analyzing options trades. Upload an E-Trade CSV or connect directly via the E-Trade API to view positions, roll chains, monthly income, and P&L analysis with interactive charts and tables.
+
+Built with the **Obsidian Terminal** design system — a luxury dark fintech aesthetic featuring Sora + IBM Plex Mono typography, glassmorphism cards, and a cyan/mint/coral accent palette.
 
 ## Quick Start
 
@@ -158,7 +160,8 @@ requests-oauthlib, python-dotenv, keyring  # E-Trade API auth
 - [x] Roll chain visualization
 - [x] Monthly income charts
 - [x] E-Trade API integration
-- [ ] P&L Analyzer tab (Black-Scholes heatmaps in browser via Plotly)
+- [x] P&L Analyzer tab (Black-Scholes heatmaps + Greeks in browser via Plotly)
+- [x] Obsidian Terminal design system (glassmorphism, custom typography, refined dark theme)
 - [ ] Local caching of fetched transactions
 - [ ] Portfolio-level analysis across multiple accounts
 
