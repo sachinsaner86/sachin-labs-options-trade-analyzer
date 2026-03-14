@@ -454,48 +454,100 @@ h1, h2, h3, h4, h5, h6 {
 
 .dash-datepicker-input::placeholder { color: var(--text-muted) !important; }
 
-.dash-datepicker-content,
-.dash-datepicker-calendar-wrapper,
-.dash-datepicker-portal .dash-datepicker-calendar-wrapper {
-    background-color: var(--bg-card) !important;
-    border: 1px solid var(--border-card) !important;
+/* ── DatePicker Calendar Popup (Dash 4.0.0) ──
+   Actual DOM: <table class="dash-datepicker-calendar"> with <td> cells.
+   Day cells use class "dash-datepicker-calendar-date-inside" for current month.
+   Dash uses CSS vars: --Dash-Text-Weak, --Dash-Text-Strong, etc. */
+
+/* Override Dash CSS variables globally for datepicker */
+.dash-datepicker-content {
+    --Dash-Text-Weak: #8b949e !important;
+    --Dash-Text-Strong: #ffffff !important;
+    --Dash-Fill-Interactive-Strong: #00d4ff !important;
+    --Dash-Fill-Interactive-Weak: rgba(0, 212, 255, 0.1) !important;
+    --Dash-Fill-Inverse-Strong: #ffffff !important;
+    background: #1c2333 !important;
+    background-color: #1c2333 !important;
+    border: 1px solid rgba(99, 179, 237, 0.2) !important;
     border-radius: var(--radius-md) !important;
-    color: var(--text-primary) !important;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+    z-index: 9999 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
-.dash-datepicker-controls { color: var(--text-primary) !important; }
+/* All th and td in the calendar table */
+.dash-datepicker-calendar th,
+.dash-datepicker-calendar td {
+    color: #8b949e !important;
+    background-color: #1c2333 !important;
+    background: #1c2333 !important;
+}
+
+/* Current-month days — bright white text */
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside {
+    color: #ffffff !important;
+}
+
+/* Hover on any day cell */
+.dash-datepicker-calendar td:hover {
+    background-color: rgba(0, 212, 255, 0.15) !important;
+    background: rgba(0, 212, 255, 0.15) !important;
+    color: #00d4ff !important;
+}
+
+/* Selected / highlighted day */
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-selected,
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-highlighted {
+    background: linear-gradient(135deg, #0891b2, #00d4ff) !important;
+    color: #060910 !important;
+    font-weight: 600 !important;
+}
+
+/* In-range days */
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-in-range {
+    background-color: rgba(0, 212, 255, 0.1) !important;
+    background: rgba(0, 212, 255, 0.1) !important;
+    color: #00d4ff !important;
+}
+
+/* Disabled days */
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-disabled {
+    color: #484f58 !important;
+}
+
+/* Caption (month/year label above calendar grid) */
+.dash-datepicker-calendar caption {
+    color: #e6edf3 !important;
+    background-color: #1c2333 !important;
+}
+
+/* Controls row (month dropdown, year input, arrows) */
+.dash-datepicker-controls,
+.dash-datepicker-controls * {
+    color: #e6edf3 !important;
+    background-color: #1c2333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+.dash-datepicker-controls input {
+    color: #e6edf3 !important;
+    background-color: #161b22 !important;
+    border: 1px solid rgba(99, 179, 237, 0.15) !important;
+}
+.dash-datepicker-controls .dash-dropdown {
+    background-color: #1c2333 !important;
+    border-color: rgba(99, 179, 237, 0.15) !important;
+}
 .dash-datepicker-controls .dash-dropdown-value-item {
-    color: var(--text-primary) !important;
+    color: #e6edf3 !important;
     font-weight: 500 !important;
 }
 
-.dash-datepicker-calendar-day {
-    background-color: transparent !important;
-    color: var(--text-primary) !important;
-    border-radius: 6px !important;
-    transition: all var(--transition);
-}
-.dash-datepicker-calendar-day:hover {
-    background-color: var(--cyan-bg) !important;
-    color: var(--cyan) !important;
-}
-.dash-datepicker-calendar-day--selected,
-.dash-datepicker-calendar-day--range-start,
-.dash-datepicker-calendar-day--range-end {
-    background: linear-gradient(135deg, var(--cyan-dim), var(--cyan)) !important;
-    color: var(--bg-abyss) !important;
-    font-weight: 600 !important;
-}
-.dash-datepicker-calendar-day--in-range {
-    background-color: var(--cyan-bg) !important;
-    color: var(--cyan) !important;
-}
-.dash-datepicker-calendar-day--disabled { color: var(--text-muted) !important; }
-.dash-datepicker-calendar-week-header { color: var(--text-secondary) !important; }
+/* Close button and caret */
 .dash-datepicker-close-button,
 .dash-datepicker-caret-icon {
-    color: var(--text-secondary) !important;
+    color: #8b949e !important;
     background-color: transparent !important;
 }
 
