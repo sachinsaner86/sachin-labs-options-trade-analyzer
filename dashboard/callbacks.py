@@ -14,7 +14,7 @@ from core.positions import build_positions, compute_summary
 from core.rolls import detect_rolls
 from core.monthly import build_monthly_data
 from dashboard.components import kpi_card, format_currency
-from dashboard.charts import monthly_income_chart, pnl_by_symbol_chart
+from dashboard.charts import monthly_income_chart, pnl_by_symbol_chart, pl_heatmap_chart, greeks_chart
 
 
 def _serialize_trades(real_trades):
@@ -431,6 +431,8 @@ def register_callbacks(app):
                 'days_held': p['days_held'],
                 'status': p['status'],
                 'roll_chain': p.get('roll_chain', ''),
+                'analyze': 'Analyze' if p['status'] == 'Open' else '',
+                'position_id': p['position_id'],
             })
 
         return rows
@@ -559,6 +561,293 @@ def register_callbacks(app):
 
         fig = monthly_income_chart(monthly)
         return fig, monthly
+
+    # ── P&L Analyzer: Analyze button click → tab switch + store write ──
+    @app.callback(
+        Output('analyzer-store', 'data'),
+        Output('main-tabs', 'active_tab'),
+        Input('positions-table', 'active_cell'),
+        State('positions-table', 'data'),
+        State('trades-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def on_analyze_click(active_cell, table_data, trades_data):
+        if not active_cell or not table_data or not trades_data:
+            return no_update, no_update
+        if active_cell.get('column_id') != 'analyze':
+            return no_update, no_update
+
+        row = table_data[active_cell['row']]
+        if row.get('status') != 'Open':
+            return no_update, no_update
+
+        # Find full position from trades-store by position_id
+        position_id = row.get('position_id', '')
+        position = None
+        for p in trades_data.get('positions', []):
+            if p['position_id'] == position_id:
+                position = p
+                break
+
+        if not position:
+            return no_update, no_update
+
+        return position, 'tab-analyzer'
+
+    # ── P&L Analyzer: Populate legs + fetch quote ──
+    @app.callback(
+        Output('analyzer-legs-table', 'data'),
+        Output('analyzer-spot', 'value'),
+        Output('analyzer-quote-status', 'children'),
+        Output('analyzer-dte-display', 'children'),
+        Output('analyzer-summary-strip', 'children'),
+        Input('analyzer-store', 'data'),
+        State('session-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def populate_analyzer(position, session_data):
+        if not position:
+            return no_update, no_update, no_update, no_update, no_update
+
+        from datetime import date as date_cls
+
+        symbol = position['symbol']
+        opt_type = position['opt_type'].lower()
+        strike = position['original_strike']
+        contracts = position['contracts']
+        direction = position['direction']
+        expiration = position['expiration']
+        avg_open_price = position['avg_open_price']
+
+        # Qty: negative for short, positive for long
+        qty = -contracts if direction == 'Short' else contracts
+
+        # Calculate DTE — handle MM/DD/YY (CSV) or YYYY-MM-DD (API) formats
+        exp_date = None
+        for fmt in ('%m/%d/%y', '%Y-%m-%d', '%m/%d/%Y'):
+            try:
+                exp_date = datetime.strptime(expiration, fmt).date()
+                break
+            except (ValueError, TypeError):
+                continue
+        dte = max((exp_date - date_cls.today()).days, 0) if exp_date else 30
+
+        # Build leg 1
+        leg = {
+            'leg_num': 1,
+            'type': opt_type,
+            'strike': strike,
+            'qty': qty,
+            'iv': 0.30,  # default IV, will be overwritten by quote
+            'entry_price': round(avg_open_price, 2),
+            'remove': '✕',
+        }
+
+        # Try to fetch quote
+        spot_value = None
+        quote_msg = ''
+        if session_data and session_data.get('authenticated'):
+            try:
+                from etrade.auth import get_session
+                from etrade.client import get_quote, format_option_symbol
+                session, error = get_session()
+                if session and not error:
+                    # Get underlying quote for spot price
+                    equity_quotes = get_quote(session, [symbol])
+                    if symbol in equity_quotes:
+                        spot_value = equity_quotes[symbol]['last_trade']
+
+                    # Get option quote for IV
+                    opt_sym = format_option_symbol(symbol, expiration, opt_type, strike)
+                    opt_quotes = get_quote(session, [opt_sym])
+                    if opt_sym in opt_quotes and opt_quotes[opt_sym]['iv'] > 0:
+                        leg['iv'] = round(opt_quotes[opt_sym]['iv'], 4)
+
+                    quote_msg = 'Quote loaded from E-Trade'
+                else:
+                    quote_msg = 'Session error — enter values manually'
+            except Exception as exc:
+                quote_msg = f'Quote fetch failed ({exc}) — enter values manually'
+        else:
+            quote_msg = 'No API session — enter spot price and IV manually'
+
+        summary_strip = html.Div([
+            html.Strong(f'{symbol} '),
+            html.Span(f'{opt_type.upper()} ${strike:.2f} exp {expiration}'),
+            html.Span(f' | {direction} {contracts} contract(s)', className='text-muted'),
+        ], style={'fontSize': '1.1rem'})
+
+        return [leg], spot_value, quote_msg, str(dte), summary_strip
+
+    # ── P&L Analyzer: Add leg ──
+    @app.callback(
+        Output('analyzer-legs-table', 'data', allow_duplicate=True),
+        Input('add-leg-btn', 'n_clicks'),
+        State('analyzer-legs-table', 'data'),
+        prevent_initial_call=True,
+    )
+    def add_analyzer_leg(n_clicks, current_data):
+        if not current_data:
+            current_data = []
+        next_num = len(current_data) + 1
+        current_data.append({
+            'leg_num': next_num,
+            'type': 'put',
+            'strike': 0,
+            'qty': 1,
+            'iv': 0.30,
+            'entry_price': 0,
+            'remove': '✕',
+        })
+        return current_data
+
+    # ── P&L Analyzer: Remove leg (via active_cell on 'remove' column) ──
+    @app.callback(
+        Output('analyzer-legs-table', 'data', allow_duplicate=True),
+        Input('analyzer-legs-table', 'active_cell'),
+        State('analyzer-legs-table', 'data'),
+        prevent_initial_call=True,
+    )
+    def remove_analyzer_leg(active_cell, current_data):
+        if not active_cell or not current_data:
+            return no_update
+        if active_cell.get('column_id') != 'remove':
+            return no_update
+        row_idx = active_cell['row']
+        if row_idx < 0 or row_idx >= len(current_data):
+            return no_update
+        current_data.pop(row_idx)
+        # Renumber
+        for i, leg in enumerate(current_data):
+            leg['leg_num'] = i + 1
+        return current_data
+
+    # ── P&L Analyzer: Calculate → render heatmap + Greeks ──
+    @app.callback(
+        Output('analyzer-heatmap', 'figure'),
+        Output('analyzer-delta', 'figure'),
+        Output('analyzer-gamma', 'figure'),
+        Output('analyzer-theta', 'figure'),
+        Output('analyzer-vega', 'figure'),
+        Output('analyzer-result-summary', 'children'),
+        Input('calculate-btn', 'n_clicks'),
+        State('analyzer-legs-table', 'data'),
+        State('analyzer-spot', 'value'),
+        State('analyzer-rate', 'value'),
+        State('analyzer-dte-display', 'children'),
+        prevent_initial_call=True,
+    )
+    def calculate_analyzer(n_clicks, legs_data, spot, rate, dte_str):
+        import plotly.graph_objects as go
+        import numpy as np
+        from core.pricing import calculate_position_pl, calculate_greeks_profile
+
+        empty_fig = go.Figure().update_layout(
+            template='plotly_dark',
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+        )
+
+        if not legs_data or spot is None:
+            msg = html.Span('Enter spot price and at least one leg, then click Calculate.',
+                            className='text-muted')
+            return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, msg
+
+        try:
+            spot = float(spot)
+            if spot <= 0:
+                raise ValueError(f'Spot price must be positive, got {spot}')
+            rate_pct = float(rate) if rate is not None else 4.5
+            r = rate_pct / 100.0
+
+            # dte_str is the children of the DTE display div; may be str, int, or None
+            if dte_str is None or dte_str == '':
+                dte = 30
+            else:
+                dte = int(str(dte_str).strip())
+
+            # Transform legs table to pricing format
+            legs = []
+            for leg in legs_data:
+                opt_type = (leg.get('type') or 'put').lower()
+                if opt_type not in ('call', 'put'):
+                    opt_type = 'put'
+                legs.append({
+                    'type': opt_type,
+                    'strike': float(leg['strike']),
+                    'qty': int(float(leg['qty'])),
+                    'iv': float(leg['iv']),
+                    'entry_price': float(leg['entry_price']),
+                })
+
+            if not legs:
+                raise ValueError('No valid legs in the table.')
+
+            # Spot range: ±20%, 50 points
+            spot_low = spot * 0.80
+            spot_high = spot * 1.20
+            spot_prices = np.linspace(spot_low, spot_high, 50)
+
+            # DTE range: current DTE down to 0, 20 steps
+            dte_values = np.linspace(0, max(dte, 1), 20).astype(int)
+            dte_values = np.unique(dte_values)[::-1]  # descending, unique
+
+            # P/L Heatmap
+            pl_grid, total_entry = calculate_position_pl(legs, spot_prices, dte_values, r)
+            heatmap_fig = pl_heatmap_chart(pl_grid, spot_prices, dte_values)
+
+            # Greeks across spot range at current DTE
+            deltas, gammas, thetas, vegas = [], [], [], []
+            for s in spot_prices:
+                g = calculate_greeks_profile(legs, s, dte, r)
+                deltas.append(g['delta'])
+                gammas.append(g['gamma'])
+                thetas.append(g['theta'])
+                vegas.append(g['vega'])
+
+            delta_fig = greeks_chart(spot_prices, deltas, 'Delta', '#17a2b8')
+            gamma_fig = greeks_chart(spot_prices, gammas, 'Gamma', '#ffd43b')
+            theta_fig = greeks_chart(spot_prices, thetas, 'Theta', '#dc3545')
+            vega_fig = greeks_chart(spot_prices, vegas, 'Vega', '#28a745')
+
+            # Breakeven points: P/L = 0 at expiration (DTE=0 row)
+            exp_row_idx = int(np.argmin(dte_values))  # row where DTE is lowest (0)
+            exp_pl = pl_grid[exp_row_idx, :]
+            breakevens = []
+            for i in range(len(exp_pl) - 1):
+                if exp_pl[i] * exp_pl[i + 1] < 0:
+                    x0, x1 = spot_prices[i], spot_prices[i + 1]
+                    y0, y1 = exp_pl[i], exp_pl[i + 1]
+                    be = x0 - y0 * (x1 - x0) / (y1 - y0)
+                    breakevens.append(round(be, 2))
+
+            max_profit = round(float(np.max(exp_pl)), 2)
+            max_loss = round(float(np.min(exp_pl)), 2)
+
+            summary_parts = []
+            if breakevens:
+                be_str = ', '.join(f'${b:,.2f}' for b in breakevens)
+                summary_parts.append(html.Span(f'Breakeven(s): {be_str}', className='me-4'))
+            summary_parts.append(
+                html.Span(f'Max Profit at Exp: {format_currency(max_profit)}',
+                           style={'color': '#28a745', 'marginRight': '16px'}))
+            summary_parts.append(
+                html.Span(f'Max Loss at Exp: {format_currency(max_loss)}',
+                           style={'color': '#dc3545'}))
+            summary_parts.append(
+                html.Span(f' | Entry Cost: {format_currency(total_entry)}',
+                           className='text-muted ms-3'))
+
+            summary_div = dbc.Card(
+                dbc.CardBody(summary_parts, style={'padding': '8px 14px'}),
+                style={'backgroundColor': '#1a1a2e', 'border': '1px solid #333'},
+            )
+
+            return heatmap_fig, delta_fig, gamma_fig, theta_fig, vega_fig, summary_div
+
+        except Exception as exc:
+            err = html.Span(f'Calculation error: {exc}', className='text-danger')
+            return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, err
 
     _register_fetch_panel_callback(app)
 

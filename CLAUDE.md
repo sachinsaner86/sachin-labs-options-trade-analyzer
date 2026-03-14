@@ -114,3 +114,22 @@ Dash 4.0.0 completely rewrote Dropdown and DatePickerRange — they no longer us
 - `allow_duplicate=True` on an Output requires `prevent_initial_call=True` or `prevent_initial_call='initial_duplicate'`
 - `dbc.Table` (v2.0.4+) does not accept `dark=True` — use `style=` instead
 - `html.Style` does not exist — inject CSS via `assets/` only
+
+### Data persistence
+`trades-store` uses `storage_type='local'` (browser localStorage) so CSV/API data survives page refreshes. `session-store` also uses `'local'` for auth token persistence. Both are cleared if the user clears browser storage.
+
+### P&L Analyzer tab (Tab 5)
+`analyzer-store` holds the position dict written by `on_analyze_click` when user clicks the "Analyze" cell on an Open position in the Positions table. The Analyze column uses plain text (no markdown) — `active_cell` fires on click, no browser navigation.
+
+Callback chain:
+1. `on_analyze_click` — writes position to `analyzer-store`, switches to `tab-analyzer`
+2. `populate_analyzer` — builds leg 1 from position, optionally fetches spot/IV from E-Trade quote API, outputs to legs table + spot input + DTE display
+3. `calculate_analyzer` — triggered by Calculate button; reads legs table, spot, rate, DTE; calls `core/pricing.py` to generate P/L grid and Greeks
+
+**Expiration date format**: `position['expiration']` is stored as `MM/DD/YY` from CSV (e.g. `'04/17/26'`). Parse with `'%m/%d/%y'` first, then fall back to `'%Y-%m-%d'` for API-sourced positions. `format_option_symbol()` and `populate_analyzer` both handle both formats.
+
+**E-Trade quote API**: `etrade/client.py:get_quote(session, symbols)` — non-fatal, returns `{}` on any error. Option symbol format: `AAPL--250321P00200000` (6-char padded symbol + YYMMDD + C/P + 8-digit strike×1000).
+
+**dcc.Graph initial figures**: Always provide `figure={'layout': {'template': 'plotly_dark', 'paper_bgcolor': 'rgba(0,0,0,0)', 'plot_bgcolor': 'rgba(0,0,0,0)'}}` to analyzer graphs so they render dark before Calculate is clicked. Without this they show a white default plotly figure.
+
+**DataTable dropdown CSS**: DataTable inline dropdowns (editable cells with `presentation: 'dropdown'`) need explicit CSS scoped to `#analyzer-legs-table .dash-dropdown-*` — the global `.dash-dropdown-*` rules don't always win inside the table cell context.

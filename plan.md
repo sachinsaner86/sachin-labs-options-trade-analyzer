@@ -191,6 +191,32 @@ positions   rolls      monthly
 - [x] E-Trade API integration with OAuth
 - [x] Token persistence across restarts
 - [x] Unit tests for API normalization
-- [ ] P&L Analyzer tab (Black-Scholes heatmaps in browser via Plotly)
+- [x] P&L Analyzer tab (Black-Scholes heatmaps in browser via Plotly)
 - [ ] Local caching of fetched transactions (offline mode)
 - [ ] Portfolio-level analysis across multiple accounts
+
+---
+
+## Phase 6: P&L Analyzer Tab ✅
+
+Interactive P&L visualization for open positions using Black-Scholes pricing.
+
+**Features:**
+- "Analyze" button on open positions in the Positions table
+- Click switches to P&L Analyzer tab with position pre-populated as leg 1
+- Editable legs table with in-cell dropdowns (Call/Put), add/remove legs
+- Auto-fetches spot price and IV from E-Trade quote API (graceful fallback to manual entry)
+- P/L Heatmap: spot price × DTE grid with RdYlGn colorscale, breakeven contour at P/L=0
+- Greeks charts: Delta, Gamma, Theta, Vega across spot price range
+- Summary bar: breakeven points, max profit/loss at expiration, entry cost
+
+**Files modified:**
+- `etrade/client.py` — Added `format_option_symbol()` and `get_quote()` for E-Trade market data
+- `dashboard/charts.py` — Added `pl_heatmap_chart()` and `greeks_chart()` builders
+- `dashboard/layout.py` — Added `_analyzer_tab()` layout, `analyzer-store`, `analyze` column in positions table
+- `dashboard/callbacks.py` — Added 5 callbacks: analyze click, populate legs, add leg, remove leg, calculate
+- `assets/custom.css` — Dark theme styles for analyzer components and Analyze button link
+
+**Reused from core:**
+- `core/pricing.py:calculate_position_pl()` — P/L grid generation
+- `core/pricing.py:calculate_greeks_profile()` — Net Greeks calculation
