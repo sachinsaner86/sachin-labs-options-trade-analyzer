@@ -9,7 +9,8 @@ from config import HOST, PORT, DEBUG
 from dashboard.layout import build_layout
 from dashboard.callbacks import register_callbacks
 
-cache = diskcache.Cache('./cache')
+import tempfile, os
+cache = diskcache.Cache(os.path.join(tempfile.gettempdir(), 'options-dash-cache'))
 
 app = dash.Dash(
     __name__,
