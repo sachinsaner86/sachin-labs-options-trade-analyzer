@@ -192,7 +192,7 @@ def register_callbacks(app):
         except Exception:
             return []
 
-    # ── E-Trade API: Fetch transactions ──
+    # ── E-Trade API: Fetch transactions (background, chunked) ──
     @app.callback(
         Output('trades-store', 'data', allow_duplicate=True),
         Output('fetch-status', 'children'),
@@ -202,59 +202,93 @@ def register_callbacks(app):
         State('date-range-picker', 'start_date'),
         State('date-range-picker', 'end_date'),
         State('session-store', 'data'),
+        background=True,
+        progress=Output('fetch-log-store', 'data'),
         prevent_initial_call=True,
     )
-    def fetch_api_data(n_clicks, source, account_id, start_date, end_date, session_data):
+    def fetch_api_data(set_progress, n_clicks, source, account_id, start_date, end_date, session_data):
+        """Fetch E-Trade transactions in 90-day chunks with live progress updates.
+
+        set_progress is injected by Dash as the first argument when background=True
+        and progress= is set. It writes to fetch-log-store, which triggers
+        render_fetch_panel reactively.
+
+        IMPORTANT: This callback cannot return Dash component objects (html.Span etc.)
+        because it runs in a worker process. fetch-status.children must be str or None.
+        """
         if source != 'api':
             return no_update, no_update
         if not account_id:
-            return no_update, html.Span('Select an account first', className='text-warning')
+            set_progress({'status': 'error', 'chunks_done': 0, 'chunks_total': 0,
+                          'log': [], 'summary': {'error': 'Select an account first'}})
+            return no_update, None
         if not session_data or not session_data.get('authenticated'):
-            return no_update, html.Span('Authenticate first', className='text-warning')
+            set_progress({'status': 'error', 'chunks_done': 0, 'chunks_total': 0,
+                          'log': [], 'summary': {'error': 'Authenticate first'}})
+            return no_update, None
+
+        from datetime import date as date_cls
+        from etrade.auth import get_session
+        from etrade.models import normalize_transactions
+
+        start = date_cls.fromisoformat(start_date)
+        end = date_cls.fromisoformat(end_date)
+        chunks = chunk_date_range(start, end)
+
+        set_progress({'status': 'running', 'chunks_done': 0, 'chunks_total': len(chunks),
+                      'log': [], 'summary': {}})
+
+        log = []
+
+        def on_chunk(chunk_idx, total, log_entry):
+            log.append(log_entry)
+            set_progress({
+                'status': 'running',
+                'chunks_done': chunk_idx,
+                'chunks_total': total,
+                'log': log,
+                'summary': {},
+            })
 
         try:
-            from etrade.auth import get_session
-            from etrade.client import get_transactions
-            from etrade.models import normalize_transactions
-
             session, error = get_session()
             if error:
-                return no_update, html.Span(f'Session error: {error}', className='text-danger')
+                set_progress({'status': 'error', 'chunks_done': 0,
+                              'chunks_total': len(chunks), 'log': log,
+                              'summary': {'error': f'Session error: {error}'}})
+                return no_update, None
 
-            start_fmt = datetime.strptime(start_date, '%Y-%m-%d').strftime('%m%d%Y') if start_date else None
-            end_fmt = datetime.strptime(end_date, '%Y-%m-%d').strftime('%m%d%Y') if end_date else None
+            all_txns = fetch_all_chunks(session, account_id, chunks, on_chunk)
 
-            raw_txns = get_transactions(session, account_id, start_fmt, end_fmt)
+            if not all_txns:
+                set_progress({'status': 'done', 'chunks_done': len(chunks),
+                              'chunks_total': len(chunks), 'log': log,
+                              'summary': {'error': None, 'total_raw_txns': 0,
+                                          'total_option_trades': 0, 'total_positions': 0,
+                                          'skipped_activity_types': [],
+                                          'fetch_time': datetime.now().isoformat()}})
+                return no_update, None
 
-            if not raw_txns:
-                return no_update, html.Span(
-                    f'No transactions found ({start_date} to {end_date})',
-                    className='text-warning',
-                )
-
-            trades = normalize_transactions(raw_txns)
+            trades = normalize_transactions(all_txns)
 
             if not trades:
-                # Dump ALL raw transactions (full structure) for debugging
-                return no_update, html.Span(
-                    f'Found {len(raw_txns)} transactions but 0 option trades. '
-                    f'Full dump: {json.dumps(raw_txns[:2], default=str)[:2000]}',
-                    className='text-warning',
-                )
+                set_progress({'status': 'done', 'chunks_done': len(chunks),
+                              'chunks_total': len(chunks), 'log': log,
+                              'summary': {'error': None, 'total_raw_txns': len(all_txns),
+                                          'total_option_trades': 0, 'total_positions': 0,
+                                          'skipped_activity_types': [],
+                                          'fetch_time': datetime.now().isoformat()}})
+                return no_update, None
 
             real_trades, split_map, get_key = normalize_trades(trades)
 
-            # Debug: show activity types to diagnose mapping issues
-            activity_types = set(t['activity_type'] for t in real_trades)
-
             pos_list = build_positions(real_trades, split_map, get_key)
-
-            # Detect rolls before serializing (needs close_trades/open_trades)
             chains, standalone, chain_label_map = detect_rolls(pos_list)
 
             positions_data = []
             for p in pos_list:
-                pd = {k: v for k, v in p.items() if k not in ('close_trades', 'open_trades', 'contract_key')}
+                pd = {k: v for k, v in p.items()
+                      if k not in ('close_trades', 'open_trades', 'contract_key')}
                 pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
                 pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
                 pd['contract_key'] = list(p['contract_key'])
@@ -269,31 +303,33 @@ def register_callbacks(app):
                     pd['chain_leg'] = -1
                 positions_data.append(pd)
 
-            if not pos_list and real_trades:
-                # Find first option transaction to show its full structure
-                sample_raw = next(
-                    (t for t in raw_txns if t.get('brokerage', {}).get('product', {}).get('securityType') in ('OPTN', 'OPT')),
-                    raw_txns[0] if raw_txns else {}
-                )
-                status_msg = html.Span(
-                    f'{len(real_trades)} trades but 0 positions. '
-                    f'Full txn: {json.dumps(sample_raw, default=str)[:1500]}',
-                    className='text-warning',
-                )
-            else:
-                status_msg = html.Span(
-                    f'Loaded {len(positions_data)} positions from {len(real_trades)} trades',
-                    className='text-success',
-                )
+            recognized = {'Sold Short', 'Bought To Open', 'Bought To Cover',
+                          'Sold To Close', 'Option Expired', 'Option Assigned'}
+            found_types = set(t['activity_type'] for t in real_trades)
+            skipped = list(found_types - recognized)
+
+            summary = {
+                'total_raw_txns': len(all_txns),
+                'total_option_trades': len(real_trades),
+                'total_positions': len(positions_data),
+                'skipped_activity_types': skipped,
+                'fetch_time': datetime.now().isoformat(),
+                'error': None,
+            }
+            set_progress({'status': 'done', 'chunks_done': len(chunks),
+                          'chunks_total': len(chunks), 'log': log, 'summary': summary})
 
             return {
                 'trades': _serialize_trades(real_trades),
                 'positions': positions_data,
                 'filename': 'E-Trade API',
-            }, status_msg
+            }, None
+
         except Exception as e:
-            import traceback
-            return no_update, html.Span(f'Error: {str(e)}', className='text-danger')
+            set_progress({'status': 'error', 'chunks_done': len(log),
+                          'chunks_total': len(chunks), 'log': log,
+                          'summary': {'error': str(e)}})
+            return no_update, None
 
     # ── KPI Cards ──
     @app.callback(
