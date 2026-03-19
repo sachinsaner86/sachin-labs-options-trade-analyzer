@@ -4,6 +4,28 @@ A local web dashboard and Python toolkit for analyzing options trades. Upload an
 
 Built with the **Obsidian Terminal** design system — a luxury dark fintech aesthetic featuring Sora + IBM Plex Mono typography, glassmorphism cards, and a cyan/mint/coral accent palette.
 
+## Screenshots
+
+### Positions Overview
+Track all your options positions at a glance — KPI cards show total P&L, win rate, open positions, and latest month income. The sortable table highlights profits in green and losses in red, with filters for symbol, status, and direction.
+
+![Positions Overview](screenshots/Dashboard-positions.png)
+
+### Roll Chains
+Automatically detects when you rolled a position (closed and reopened on the same day) and groups them into chains. Each chain shows the full leg-by-leg history with running P&L so you can see how a position evolved over time.
+
+![Roll Chains](screenshots/Dashboard-Rollchains.png)
+
+### Monthly Income
+Visualize your monthly cash flow with a bar chart and cumulative P&L line. The breakdown table shows premiums collected, closing costs, and net income for each month.
+
+![Monthly Income](screenshots/Dashboard-MonthlyIncome.png)
+
+### P&L Analyzer — Options Heatmap
+Select any open position and run a Black-Scholes analysis. The heatmap shows projected P&L across stock price and days to expiration, with Greeks (Delta, Gamma, Theta, Vega) displayed alongside.
+
+![P&L Analyzer Heatmap](screenshots/Dashboard-Options-Heatmap.png)
+
 ## Quick Start
 
 ```bash
