@@ -152,3 +152,17 @@ Callback chain:
 **dcc.Graph initial figures**: Always provide `figure={'layout': {'template': 'plotly_dark', 'paper_bgcolor': 'rgba(0,0,0,0)', 'plot_bgcolor': 'rgba(0,0,0,0)'}}` to analyzer graphs so they render dark before Calculate is clicked. Without this they show a white default plotly figure.
 
 **DataTable dropdown CSS**: DataTable inline dropdowns (editable cells with `presentation: 'dropdown'`) need explicit CSS scoped to `#analyzer-legs-table .dash-dropdown-*` — the global `.dash-dropdown-*` rules don't always win inside the table cell context.
+
+# Project Rules & Constraints
+- **Git Operations:** NEVER execute `git commit`, `git merge`, or `git push` automatically. You must propose the changes and wait for my explicit "Yes" or "Proceed" for each step.
+- **Workflow:** Before finishing any significant task, always prompt me to see if I want to run the `@update-docs` routine.
+
+## Defined Routines
+
+### @update-docs
+When I ask for this routine, perform these steps:
+1. **Analyze:** Review all changes made during this session.
+2. **Update memory.md:** Summarize what was learned, new technical decisions, or architectural changes.
+3. **Update claude.md:** Update the project status or "current focus" section.
+4. **Prepare Commit:** Stage `memory.md`, `claude.md`, and any code changes.
+5. **Request Permission:** Present the suggested commit message and ask: "Ready to commit and push?"

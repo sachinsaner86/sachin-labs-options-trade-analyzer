@@ -120,6 +120,19 @@ def register_callbacks(app):
             'filename': filename,
         }, None, {'status': 'idle'}
 
+    # ── Clear all trade data ──
+    @app.callback(
+        Output('trades-store', 'data', allow_duplicate=True),
+        Output('fetch-log-store', 'data', allow_duplicate=True),
+        Output('analyzer-store', 'data', allow_duplicate=True),
+        Input('clear-btn', 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_clear_click(n_clicks):
+        if not n_clicks:
+            return no_update, no_update, no_update
+        return {}, {'status': 'idle'}, None
+
     # ── E-Trade Auth: Start Flow ──
     @app.callback(
         Output('auth-state-store', 'data'),

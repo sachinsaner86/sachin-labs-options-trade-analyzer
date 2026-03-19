@@ -34,6 +34,13 @@ Open http://localhost:8050 in your browser. Upload an E-Trade CSV to get started
 **Tab 4 — Settings**
 - E-Trade OAuth status and re-authentication
 
+**Tab 5 — P&L Analyzer**
+- Click "Analyze" on any open position to launch the analyzer
+- Black-Scholes P&L heatmap (stock price vs DTE) with custom coral→mint colorscale
+- Greeks display (Delta, Gamma, Theta, Vega) for multi-leg strategies
+- Add/edit legs, adjust spot price, risk-free rate, and DTE
+- Auto-fetches current spot price and IV from E-Trade when connected
+
 **Data Sources**
 - CSV upload (drag-and-drop E-Trade transaction history)
 - E-Trade API (OAuth 1.0, account selector, date range picker)

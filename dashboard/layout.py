@@ -11,8 +11,7 @@ def build_header():
         dbc.Container([
             dbc.NavbarBrand([
                 html.Span('\u25C6 ', style={'opacity': '0.6', 'fontSize': '0.9rem'}),
-                'Obsidian',
-                html.Span(' Terminal', style={'fontWeight': '300', 'opacity': '0.7'}),
+                'Options Trade Analyzer',
             ], className='ms-2 fw-bold'),
             dbc.Row([
                 dbc.Col(
@@ -47,12 +46,18 @@ def build_header():
                     ),
                     width='auto',
                 ),
-                dbc.Col(
+                dbc.Col([
                     dbc.Button('Refresh', id='refresh-btn', size='sm',
                                className='me-2',
                                style={'background': 'linear-gradient(135deg, #0891b2, #00d4ff)',
                                       'border': 'none', 'fontWeight': '600',
                                       'fontSize': '0.78rem', 'letterSpacing': '0.02em'}),
+                    dbc.Button('Clear', id='clear-btn', size='sm',
+                               style={'background': 'transparent',
+                                      'border': '1px solid rgba(255, 107, 107, 0.4)',
+                                      'color': '#ff6b6b', 'fontWeight': '600',
+                                      'fontSize': '0.78rem', 'letterSpacing': '0.02em'}),
+                    ],
                     width='auto',
                 ),
                 dbc.Col(
@@ -236,8 +241,10 @@ def _positions_tab():
                     sort_action='native',
                     filter_action='native',
                     page_size=25,
-                    style_table={'overflowX': 'auto'},
-                    style_header=TABLE_HEADER_STYLE,
+                    style_table={'overflowX': 'auto', 'overflowY': 'auto',
+                                  'maxHeight': '60vh'},
+                    style_header={**TABLE_HEADER_STYLE, 'position': 'sticky',
+                                  'top': 0, 'zIndex': 1},
                     style_cell=TABLE_CELL_STYLE,
                     style_data_conditional=PNL_CONDITIONAL,
                 ),
