@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python app.py                          # starts at http://localhost:8050
 
 # Run tests
-python tests/test_etrade_models.py     # unit tests (no E-Trade connection needed)
+python tests/test_etrade_models.py     # E-Trade API normalization tests
+python tests/test_chunked_fetch.py     # date range chunking tests
 
 # Run CLI scripts directly
 python analyze_options.py
@@ -57,6 +58,12 @@ If `activity_type` doesn't match, trades are silently ignored and positions will
 - Expiration is in separate fields: `product.expiryYear`, `product.expiryMonth`, `product.expiryDay` — there is no `product.expiryDate`
 - Net cash flow is in top-level `txn.amount`; commission is in `brokerage.fee`
 - `brokerage.quantity` is negative for short sells — use `abs()`
+
+### Config defaults
+`config.py` loads from `.env` via `python-dotenv`. Defaults when env vars are absent: `HOST=127.0.0.1`, `PORT=8050`, `DEBUG=true`. E-Trade base/auth URLs are hardcoded.
+
+### E-Trade 90-day API limit
+The E-Trade transaction history API only returns 90 days per request. `etrade/chunked_fetch.py` splits the user's date range into 90-day chunks and fetches sequentially, reporting progress via `set_progress`.
 
 ### Auth persistence
 `session-store` uses `storage_type='local'` (browser localStorage). On every page load, `check_saved_session()` in `callbacks.py` calls `etrade/auth.py:get_session()` which checks the Windows Credential Manager for a saved token and attempts renewal. If valid, the auth card auto-collapses. Tokens expire at midnight ET.
@@ -134,8 +141,10 @@ Dash 4.0.0 completely rewrote Dropdown and DatePickerRange — they no longer us
 - `dbc.Table` (v2.0.4+) does not accept `dark=True` — use `style=` instead
 - `html.Style` does not exist — inject CSS via `assets/` only
 
-### Data persistence
+### Data persistence and Clear button
 `trades-store` uses `storage_type='local'` (browser localStorage) so CSV/API data survives page refreshes. `session-store` also uses `'local'` for auth token persistence. Both are cleared if the user clears browser storage.
+
+The **Clear button** (header, next to Refresh) resets `trades-store` → `{}`, `fetch-log-store` → `{'status': 'idle'}`, and `analyzer-store` → `None`. It does **not** touch `session-store` or `auth-state-store`, so the E-Trade auth token survives a clear.
 
 ### P&L Analyzer tab (Tab 5)
 `analyzer-store` holds the position dict written by `on_analyze_click` when user clicks the "Analyze" cell on an Open position in the Positions table. The Analyze column uses plain text (no markdown) — `active_cell` fires on click, no browser navigation.
