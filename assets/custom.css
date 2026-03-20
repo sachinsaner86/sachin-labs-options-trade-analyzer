@@ -813,3 +813,171 @@ hr {
     padding: 0;
     overflow: hidden;
 }
+
+/* ── Manual Trade Modal ── */
+.trade-modal .modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+}
+
+.trade-modal .modal-header {
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 0.75rem 1rem 0;
+}
+
+.trade-modal .modal-header .nav-tabs {
+    border-bottom: none;
+}
+
+.trade-modal .modal-header .nav-link {
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: none;
+    padding: 0.5rem 1rem;
+}
+
+.trade-modal .modal-header .nav-link.active {
+    color: var(--cyan);
+    background: transparent;
+    border-bottom: 2px solid var(--cyan);
+}
+
+.trade-modal .modal-body {
+    background: var(--bg-card);
+    padding: 1.25rem;
+}
+
+.trade-modal .form-label {
+    font-family: var(--font-ui);
+    letter-spacing: 0.02em;
+}
+
+.trade-modal .form-control,
+.trade-modal .dash-dropdown {
+    background: var(--bg-deep) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-data);
+    font-size: 0.85rem;
+}
+
+.trade-modal .form-control:focus {
+    border-color: var(--cyan) !important;
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.15) !important;
+}
+
+/* Instrument badges */
+.instrument-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-data);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.instrument-badge--opt {
+    background: rgba(0, 212, 255, 0.15);
+    color: var(--cyan);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.instrument-badge--fut {
+    background: rgba(255, 179, 71, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(255, 179, 71, 0.3);
+}
+
+/* Manage trades list rows */
+.manual-trade-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background var(--transition-fast);
+}
+
+.manual-trade-row:hover {
+    background: var(--bg-elevated);
+}
+
+.manual-trade-row .trade-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.manual-trade-row .trade-details {
+    font-family: var(--font-data);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.manual-trade-row .trade-amount {
+    font-family: var(--font-data);
+    font-size: 0.85rem;
+    font-weight: 600;
+    min-width: 80px;
+    text-align: right;
+}
+
+.manual-trade-row .trade-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: 0.75rem;
+}
+
+.manual-trade-row .trade-actions .btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.72rem;
+}
+
+/* Delete confirmation inline */
+.delete-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    color: var(--coral);
+}
+
+/* Trade form feedback toast */
+.trade-toast-success {
+    color: var(--mint);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    padding: 0.5rem;
+    background: rgba(0, 255, 136, 0.08);
+    border-radius: var(--radius-sm);
+    margin-top: 0.5rem;
+}
+
+.trade-toast-error {
+    color: var(--coral);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    padding: 0.5rem;
+    background: rgba(255, 107, 107, 0.08);
+    border-radius: var(--radius-sm);
+    margin-top: 0.5rem;
+}
+
+/* Manage summary footer */
+.manage-summary {
+    padding: 0.75rem;
+    background: var(--bg-deep);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-data);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 1.5rem;
+}

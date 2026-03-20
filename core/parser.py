@@ -32,6 +32,12 @@ def _parse_rows(rows):
         activity_type = row[3].strip()
         description = row[4].strip()
 
+        # E-Trade sometimes uses short activity names — disambiguate via description
+        if activity_type == 'Sold':
+            activity_type = 'Sold Short' if 'OPENING' in description.upper() else 'Sold To Close'
+        elif activity_type == 'Bought':
+            activity_type = 'Bought To Open' if 'OPENING' in description.upper() else 'Bought To Cover'
+
         desc_clean = description.split(' ADJUST')[0].strip()
         match = re.match(r'(CALL|PUT)\s+(\w+)\s+(\d{2}/\d{2}/\d{2})\s+([\d.]+)', desc_clean)
         if not match:

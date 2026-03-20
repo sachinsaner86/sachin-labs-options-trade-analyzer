@@ -86,7 +86,12 @@ def build_positions(real_trades, split_map, get_contract_key):
 
         # Stable ID: contract_key + open_date (unique per position)
         open_str = open_date.isoformat() if open_date else 'none'
-        position_id = f"{symbol}_{opt_type}_{expiration}_{strike}_{open_str}"
+        if opt_type is None:
+            # Futures: include strike (entry price) to separate positions at different prices
+            strike_str = str(strike) if strike is not None else ''
+            position_id = f"{symbol}_FUT_{strike_str}__{open_str}"
+        else:
+            position_id = f"{symbol}_{opt_type}_{expiration}_{strike}_{open_str}"
 
         pos_list.append({
             'position_id': position_id,
