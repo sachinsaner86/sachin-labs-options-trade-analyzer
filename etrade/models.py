@@ -9,7 +9,7 @@ def _parse_etrade_date(epoch_ms):
     return datetime.fromtimestamp(epoch_ms / 1000)
 
 
-def _map_transaction_type(txn_type, brokerage_detail):
+def _map_transaction_type(txn_type, description=''):
     """Map E-Trade transaction type to our activity_type categories."""
     # transactionType is at the top-level txn, not inside brokerage
     mapping = {
@@ -18,9 +18,17 @@ def _map_transaction_type(txn_type, brokerage_detail):
         'Buy to Cover': 'Bought To Cover',
         'Bought To Cover': 'Bought To Cover',
         'Sell': 'Sold To Close',
-        'Sold': 'Sold To Close',
     }
-    return mapping.get(txn_type, txn_type)
+    result = mapping.get(txn_type, txn_type)
+
+    # "Sold"/"Bought" are ambiguous — use description to disambiguate
+    desc_upper = description.upper()
+    if txn_type == 'Sold':
+        result = 'Sold Short' if 'OPENING' in desc_upper else 'Sold To Close'
+    elif txn_type == 'Bought' and 'CLOSING' in desc_upper:
+        result = 'Bought To Cover'
+
+    return result
 
 
 def normalize_transactions(api_transactions):
@@ -42,7 +50,8 @@ def normalize_transactions(api_transactions):
             continue
 
         trade_date = _parse_etrade_date(txn.get('transactionDate', 0))
-        activity_type = _map_transaction_type(txn.get('transactionType', ''), brokerage)
+        activity_type = _map_transaction_type(txn.get('transactionType', ''),
+                                               txn.get('description', ''))
 
         symbol = product.get('symbol', '')
         call_put = product.get('callPut', '')

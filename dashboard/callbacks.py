@@ -7,7 +7,7 @@ from datetime import datetime
 from etrade.chunked_fetch import chunk_date_range, fetch_all_chunks
 
 import dash_bootstrap_components as dbc
-from dash import html, callback, Input, Output, State, no_update, ctx
+from dash import html, callback, Input, Output, State, no_update, ctx, ALL
 
 from core.parser import parse_csv_content, normalize_trades
 from core.positions import build_positions, compute_summary
@@ -15,6 +15,7 @@ from core.rolls import detect_rolls
 from core.monthly import build_monthly_data
 from dashboard.components import kpi_card, format_currency, KPI_ICONS
 from dashboard.charts import monthly_income_chart, pnl_by_symbol_chart, pl_heatmap_chart, greeks_chart
+from core.db import get_all_trades as get_manual_trades
 
 
 def _serialize_trades(real_trades):
@@ -35,6 +36,54 @@ def _deserialize_trades(json_trades):
         d['date'] = datetime.fromisoformat(t['date'])
         out.append(d)
     return out
+
+
+def _merge_manual_trades(base_trades, start_date=None, end_date=None):
+    """Merge manual trades from SQLite with base trades, filtered by date range."""
+    from datetime import datetime as dt
+    manual = get_manual_trades()
+    if start_date and end_date:
+        if isinstance(start_date, str):
+            start_date = dt.fromisoformat(start_date)
+        if isinstance(end_date, str):
+            end_date = dt.fromisoformat(end_date)
+        manual = [t for t in manual
+                  if start_date.date() <= t['date'].date() <= end_date.date()]
+    return base_trades + manual
+
+
+def _build_and_serialize_positions(trades, split_map=None, get_key=None):
+    """Build positions from trades and serialize for trades-store.
+
+    Shared helper to avoid duplicating the position serialization block.
+    Returns positions_data list (JSON-safe).
+    """
+    if split_map is None:
+        split_map = {}
+    if get_key is None:
+        get_key = lambda t: (t['symbol'], t['opt_type'], t['expiration'], t['strike'])
+
+    pos_list = build_positions(trades, split_map, get_key)
+    chains, standalone, chain_label_map = detect_rolls(pos_list)
+
+    positions_data = []
+    for p in pos_list:
+        pd = {k: v for k, v in p.items() if k not in ('close_trades', 'open_trades', 'contract_key')}
+        pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
+        pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
+        pd['contract_key'] = list(p['contract_key'])
+        chain_info = chain_label_map.get(p['position_id'])
+        if chain_info:
+            pd['roll_chain'] = chain_info['label']
+            pd['chain_index'] = chain_info['chain_index']
+            pd['chain_leg'] = chain_info['chain_leg']
+        else:
+            pd['roll_chain'] = ''
+            pd['chain_index'] = -1
+            pd['chain_leg'] = -1
+        positions_data.append(pd)
+
+    return positions_data
 
 
 def register_callbacks(app):
@@ -85,37 +134,21 @@ def register_callbacks(app):
         Output('fetch-log-store', 'data', allow_duplicate=True),
         Input('csv-upload', 'contents'),
         State('csv-upload', 'filename'),
+        State('date-range-picker', 'start_date'),
+        State('date-range-picker', 'end_date'),
         prevent_initial_call=True,
     )
-    def on_csv_upload(contents, filename):
+    def on_csv_upload(contents, filename, start_date, end_date):
         if not contents:
             return no_update, no_update, no_update
         content_type, content_string = contents.split(',')
         decoded = base64.b64decode(content_string).decode('utf-8')
         real_trades, split_map, get_key = parse_csv_content(decoded)
-
-        pos_list = build_positions(real_trades, split_map, get_key)
-        chains, standalone, chain_label_map = detect_rolls(pos_list)
-
-        positions_data = []
-        for p in pos_list:
-            pd = {k: v for k, v in p.items() if k not in ('close_trades', 'open_trades', 'contract_key')}
-            pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
-            pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
-            pd['contract_key'] = list(p['contract_key'])
-            chain_info = chain_label_map.get(p['position_id'])
-            if chain_info:
-                pd['roll_chain'] = chain_info['label']
-                pd['chain_index'] = chain_info['chain_index']
-                pd['chain_leg'] = chain_info['chain_leg']
-            else:
-                pd['roll_chain'] = ''
-                pd['chain_index'] = -1
-                pd['chain_leg'] = -1
-            positions_data.append(pd)
+        combined = _merge_manual_trades(real_trades, start_date, end_date)
+        positions_data = _build_and_serialize_positions(combined, split_map, get_key)
 
         return {
-            'trades': _serialize_trades(real_trades),
+            'trades': _serialize_trades(combined),
             'positions': positions_data,
             'filename': filename,
         }, None, {'status': 'idle'}
@@ -132,6 +165,417 @@ def register_callbacks(app):
         if not n_clicks:
             return no_update, no_update, no_update
         return {}, {'status': 'idle'}, None
+
+    # ── Load manual trades on page load (if no CSV/API data) ──
+    @app.callback(
+        Output('trades-store', 'data', allow_duplicate=True),
+        Input('trades-store', 'modified_timestamp'),
+        State('trades-store', 'data'),
+        State('date-range-picker', 'start_date'),
+        State('date-range-picker', 'end_date'),
+        prevent_initial_call='initial_duplicate',
+    )
+    def load_manual_on_start(ts, current_data, start_date, end_date):
+        """On page load, if trades-store is empty, load manual trades from SQLite."""
+        if current_data and current_data.get('trades'):
+            return no_update
+
+        manual = _merge_manual_trades([], start_date, end_date)
+        if not manual:
+            return no_update
+
+        positions_data = _build_and_serialize_positions(manual)
+
+        return {
+            'trades': _serialize_trades(manual),
+            'positions': positions_data,
+            'filename': 'Manual Trades',
+        }
+
+    # ── Trade Modal: Open/Close ──
+    @app.callback(
+        Output('trade-modal', 'is_open'),
+        Input('open-trade-modal-btn', 'n_clicks'),
+        State('trade-modal', 'is_open'),
+        prevent_initial_call=True,
+    )
+    def toggle_trade_modal(n_clicks, is_open):
+        if n_clicks:
+            return not is_open
+        return is_open
+
+    # ── Trade Modal: Tab Toggle ──
+    @app.callback(
+        Output('modal-add-view', 'style'),
+        Output('modal-manage-view', 'style'),
+        Input('trade-modal-tabs', 'active_tab'),
+    )
+    def toggle_modal_tab(active_tab):
+        if active_tab == 'modal-tab-manage':
+            return {'display': 'none'}, {'display': 'block'}
+        return {'display': 'block'}, {'display': 'none'}
+
+    # ── Trade Modal: Instrument Toggle ──
+    @app.callback(
+        Output('option-only-fields-wrapper', 'style'),
+        Output('trade-amount', 'placeholder'),
+        Output('trade-strike-label', 'children'),
+        Input('trade-instrument-toggle', 'value'),
+    )
+    def toggle_instrument_fields(instrument):
+        if instrument == 'future':
+            return {'display': 'none'}, 'Enter amount', 'Entry Price'
+        if instrument == 'futures_option':
+            return {'display': 'block'}, 'Enter amount', 'Strike Price'
+        return {'display': 'block'}, 'Auto', 'Strike Price'
+
+    # ── Trade Modal: Amount Auto-calc for Options ──
+    @app.callback(
+        Output('trade-amount', 'value'),
+        Input('trade-quantity', 'value'),
+        Input('trade-price', 'value'),
+        Input('trade-activity-type', 'value'),
+        State('trade-instrument-toggle', 'value'),
+        State('trade-amount', 'value'),
+        prevent_initial_call=True,
+    )
+    def auto_calc_amount(qty, price, activity_type, instrument, current_amount):
+        if instrument in ('future', 'futures_option'):
+            return no_update
+        if qty and price and activity_type:
+            raw = abs(qty) * abs(price) * 100
+            # Positive for sells, negative for buys
+            if activity_type in ('Sold Short', 'Sold To Close'):
+                return round(raw, 2)
+            else:
+                return round(-raw, 2)
+        return no_update
+
+    # ── Trade Modal: Save Trade ──
+    @app.callback(
+        Output('trade-form-feedback', 'children'),
+        Output('manual-trades-refresh', 'data'),
+        Output('trade-edit-id', 'data', allow_duplicate=True),
+        Output('trade-instrument-toggle', 'value', allow_duplicate=True),
+        Output('trade-symbol', 'value'),
+        Output('trade-activity-type', 'value'),
+        Output('trade-opt-type', 'value'),
+        Output('trade-strike', 'value'),
+        Output('trade-quantity', 'value'),
+        Output('trade-price', 'value'),
+        Output('trade-amount', 'value', allow_duplicate=True),
+        Output('trade-commission', 'value'),
+        Input('save-trade-btn', 'n_clicks'),
+        State('trade-edit-id', 'data'),
+        State('trade-instrument-toggle', 'value'),
+        State('trade-date-picker', 'date'),
+        State('trade-activity-type', 'value'),
+        State('trade-symbol', 'value'),
+        State('trade-opt-type', 'value'),
+        State('trade-strike', 'value'),
+        State('trade-expiration-picker', 'date'),
+        State('trade-quantity', 'value'),
+        State('trade-price', 'value'),
+        State('trade-amount', 'value'),
+        State('trade-commission', 'value'),
+        prevent_initial_call=True,
+    )
+    def save_trade(n_clicks, edit_id, instrument, trade_date, activity_type,
+                   symbol, opt_type, strike, expiration, quantity, price, amount,
+                   commission):
+        if not n_clicks:
+            return no_update, no_update, no_update, *([no_update] * 9)
+
+        # Validate required fields
+        errors = []
+        if not trade_date:
+            errors.append('Trade date is required')
+        if not activity_type:
+            errors.append('Activity type is required')
+        if not symbol:
+            errors.append('Symbol is required')
+        if not quantity or quantity <= 0:
+            errors.append('Contracts must be positive')
+        if price is None:
+            errors.append('Price is required')
+        if amount is None:
+            errors.append('Amount is required')
+        if instrument in ('option', 'futures_option'):
+            if not opt_type:
+                errors.append('Option type is required')
+            if not strike:
+                errors.append('Strike is required')
+            if not expiration:
+                errors.append('Expiration is required')
+
+        if errors:
+            feedback = html.Div('; '.join(errors), className='trade-toast-error')
+            return feedback, no_update, no_update, *([no_update] * 9)
+
+        from core.db import add_trade, update_trade
+
+        # Format expiration as MM/DD/YY for options and futures options
+        has_option_fields = instrument in ('option', 'futures_option')
+        exp_str = None
+        if has_option_fields and expiration:
+            exp_dt = datetime.fromisoformat(expiration) if isinstance(expiration, str) else expiration
+            exp_str = exp_dt.strftime('%m/%d/%y')
+
+        trade_dict = {
+            'date': datetime.fromisoformat(trade_date) if isinstance(trade_date, str) else trade_date,
+            'activity_type': activity_type,
+            'symbol': symbol.upper().strip(),
+            'opt_type': opt_type if has_option_fields else None,
+            'expiration': exp_str if has_option_fields else None,
+            'strike': float(strike) if strike else None,
+            'quantity': int(quantity),
+            'price': float(price),
+            'amount': float(amount),
+            'commission': float(commission) if commission else 0,
+            'instrument_type': instrument,
+        }
+
+        try:
+            if edit_id:
+                update_trade(edit_id, trade_dict)
+                msg = 'Trade updated'
+            else:
+                add_trade(trade_dict)
+                msg = 'Trade added'
+        except Exception as e:
+            feedback = html.Div(f'Error: {e}', className='trade-toast-error')
+            return feedback, no_update, no_update, *([no_update] * 9)
+
+        feedback = html.Div(msg, className='trade-toast-success')
+        # Clear form + bump refresh counter (12 values total)
+        return feedback, (edit_id or 0) + 1, None, 'option', '', None, None, None, None, None, None, 0
+
+    # ── Rebuild trades-store after manual trade changes ──
+    @app.callback(
+        Output('trades-store', 'data', allow_duplicate=True),
+        Input('manual-trades-refresh', 'data'),
+        State('trades-store', 'data'),
+        State('date-range-picker', 'start_date'),
+        State('date-range-picker', 'end_date'),
+        prevent_initial_call=True,
+    )
+    def rebuild_after_manual_change(refresh_counter, current_data, start_date, end_date):
+        if not refresh_counter:
+            return no_update
+
+        base_trades = []
+        filename = 'Manual Trades'
+        if current_data and current_data.get('trades'):
+            base_trades = _deserialize_trades(current_data['trades'])
+            # Filter out old manual trades — they'll be re-read from SQLite
+            base_trades = [t for t in base_trades if t.get('source') != 'manual']
+            filename = current_data.get('filename', filename)
+
+        combined = _merge_manual_trades(base_trades, start_date, end_date)
+        if not combined:
+            return no_update
+
+        positions_data = _build_and_serialize_positions(combined)
+
+        return {
+            'trades': _serialize_trades(combined),
+            'positions': positions_data,
+            'filename': filename,
+        }
+
+    # ── Trade Modal: Populate Manage List ──
+    @app.callback(
+        Output('manage-trades-list', 'children'),
+        Output('manage-trades-summary', 'children'),
+        Output('manage-trades-tab-label', 'label'),
+        Input('trade-modal-tabs', 'active_tab'),
+        Input('manual-trades-refresh', 'data'),
+        Input('manage-search', 'value'),
+        Input('manage-type-filter', 'value'),
+        Input('pending-delete-store', 'data'),
+    )
+    def populate_manage_list(active_tab, refresh, search, type_filter, pending_delete):
+        trades = get_manual_trades()
+
+        # Apply filters
+        if search:
+            search_upper = search.upper().strip()
+            trades = [t for t in trades if search_upper in t['symbol'].upper()]
+        if type_filter and type_filter != 'all':
+            trades = [t for t in trades if t.get('instrument_type', 'option') == type_filter]
+
+        # Sort by most recent first
+        trades.sort(key=lambda t: t['date'], reverse=True)
+
+        tab_label = f"Manage Trades ({len(trades)})"
+
+        if not trades:
+            return html.Div('No manual trades yet.', className='text-secondary p-3'), '', tab_label
+
+        rows = []
+        for t in trades:
+            tid = t['trade_id']
+            inst = t.get('instrument_type', 'option')
+            badge_cls = 'instrument-badge instrument-badge--opt' if inst == 'option' else 'instrument-badge instrument-badge--fut'
+            badge_text = 'OPT' if inst == 'option' else 'FUT'
+
+            if inst == 'option':
+                details = f"{t.get('opt_type', '')} {t.get('strike', '')} {t.get('expiration', '')}"
+            else:
+                details = t['activity_type']
+
+            amount_color = '#00ff88' if t['amount'] >= 0 else '#ff6b6b'
+            date_str = t['date'].strftime('%m/%d/%y') if hasattr(t['date'], 'strftime') else str(t['date'])
+
+            # Inline delete confirmation
+            if pending_delete == tid:
+                actions = html.Div([
+                    html.Span('Delete this trade?', style={'color': '#ff6b6b'}),
+                    dbc.Button('Yes', id={'type': 'confirm-delete-btn', 'index': tid},
+                               size='sm', color='danger', className='ms-2'),
+                    dbc.Button('No', id={'type': 'cancel-delete-btn', 'index': tid},
+                               size='sm', outline=True, color='secondary', className='ms-1'),
+                ], className='delete-confirm')
+            else:
+                actions = html.Div([
+                    dbc.Button('Edit', id={'type': 'edit-trade-btn', 'index': tid},
+                               size='sm', outline=True, color='info'),
+                    dbc.Button('Delete', id={'type': 'delete-trade-btn', 'index': tid},
+                               size='sm', outline=True, color='danger'),
+                ], className='trade-actions')
+
+            row = html.Div([
+                html.Div([
+                    html.Span(badge_text, className=badge_cls),
+                    html.Div([
+                        html.Span(t['symbol'], style={'fontWeight': '600', 'color': '#e6edf3',
+                                                       'fontFamily': 'IBM Plex Mono'}),
+                        html.Span(f' \u00b7 {details} \u00b7 {date_str}',
+                                  className='trade-details'),
+                    ]),
+                ], className='trade-info'),
+                html.Span(f"${t['amount']:,.2f}",
+                          className='trade-amount',
+                          style={'color': amount_color}),
+                actions,
+            ], className='manual-trade-row')
+            rows.append(row)
+
+        # Summary footer
+        opt_trades = [t for t in trades if t.get('instrument_type', 'option') == 'option']
+        fut_trades = [t for t in trades if t.get('instrument_type', 'option') == 'future']
+        opt_pnl = sum(t['amount'] for t in opt_trades)
+        fut_pnl = sum(t['amount'] for t in fut_trades)
+        summary = html.Div([
+            html.Span(f"Total: {len(trades)} trades"),
+            html.Span(f"Options P&L: ${opt_pnl:,.2f}",
+                      style={'color': '#00ff88' if opt_pnl >= 0 else '#ff6b6b'}),
+            html.Span(f"Futures P&L: ${fut_pnl:,.2f}",
+                      style={'color': '#00ff88' if fut_pnl >= 0 else '#ff6b6b'}),
+        ], className='manage-summary')
+
+        return rows, summary, tab_label
+
+    # ── Trade Modal: Edit button → populate form ──
+    @app.callback(
+        Output('trade-modal-tabs', 'active_tab', allow_duplicate=True),
+        Output('trade-edit-id', 'data'),
+        Output('trade-instrument-toggle', 'value', allow_duplicate=True),
+        Output('trade-date-picker', 'date'),
+        Output('trade-activity-type', 'value', allow_duplicate=True),
+        Output('trade-symbol', 'value', allow_duplicate=True),
+        Output('trade-opt-type', 'value', allow_duplicate=True),
+        Output('trade-strike', 'value', allow_duplicate=True),
+        Output('trade-expiration-picker', 'date'),
+        Output('trade-quantity', 'value', allow_duplicate=True),
+        Output('trade-price', 'value', allow_duplicate=True),
+        Output('trade-amount', 'value', allow_duplicate=True),
+        Output('trade-commission', 'value', allow_duplicate=True),
+        Input({'type': 'edit-trade-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_edit_trade(n_clicks_list):
+        if not any(n_clicks_list):
+            return (no_update,) * 13
+
+        triggered = ctx.triggered_id
+        if not triggered:
+            return (no_update,) * 13
+
+        trade_id = triggered['index']
+        from core.db import get_trade
+        t = get_trade(trade_id)
+        if not t:
+            return (no_update,) * 13
+
+        inst = t.get('instrument_type', 'option')
+        exp_date = None
+        if t.get('expiration'):
+            try:
+                exp_date = datetime.strptime(t['expiration'], '%m/%d/%y').date().isoformat()
+            except ValueError:
+                exp_date = t['expiration']
+
+        trade_date = t['date'].date().isoformat() if hasattr(t['date'], 'date') else t['date']
+
+        return (
+            'modal-tab-add',       # switch to Add tab
+            trade_id,              # edit mode
+            inst,                  # instrument toggle
+            trade_date,            # date
+            t['activity_type'],    # activity type
+            t['symbol'],           # symbol
+            t.get('opt_type'),     # opt type
+            t.get('strike'),       # strike
+            exp_date,              # expiration
+            t.get('quantity'),     # qty
+            t.get('price'),        # price
+            t.get('amount'),       # amount
+            t.get('commission', 0),  # commission
+        )
+
+    # ── Trade Modal: Delete button → set pending ──
+    @app.callback(
+        Output('pending-delete-store', 'data'),
+        Input({'type': 'delete-trade-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_delete_click(n_clicks_list):
+        if not any(n_clicks_list):
+            return no_update
+        triggered = ctx.triggered_id
+        if not triggered:
+            return no_update
+        return triggered['index']
+
+    # ── Trade Modal: Confirm delete ──
+    @app.callback(
+        Output('manual-trades-refresh', 'data', allow_duplicate=True),
+        Output('pending-delete-store', 'data', allow_duplicate=True),
+        Input({'type': 'confirm-delete-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_confirm_delete(n_clicks_list):
+        if not any(n_clicks_list):
+            return no_update, no_update
+        triggered = ctx.triggered_id
+        if not triggered:
+            return no_update, no_update
+        trade_id = triggered['index']
+        from core.db import delete_trade
+        delete_trade(trade_id)
+        return datetime.now().timestamp(), None
+
+    # ── Trade Modal: Cancel delete ──
+    @app.callback(
+        Output('pending-delete-store', 'data', allow_duplicate=True),
+        Input({'type': 'cancel-delete-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_cancel_delete(n_clicks_list):
+        if not any(n_clicks_list):
+            return no_update
+        return None
 
     # ── E-Trade Auth: Start Flow ──
     @app.callback(
@@ -294,27 +738,8 @@ def register_callbacks(app):
                 return no_update, None
 
             real_trades, split_map, get_key = normalize_trades(trades)
-
-            pos_list = build_positions(real_trades, split_map, get_key)
-            chains, standalone, chain_label_map = detect_rolls(pos_list)
-
-            positions_data = []
-            for p in pos_list:
-                pd = {k: v for k, v in p.items()
-                      if k not in ('close_trades', 'open_trades', 'contract_key')}
-                pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
-                pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
-                pd['contract_key'] = list(p['contract_key'])
-                chain_info = chain_label_map.get(p['position_id'])
-                if chain_info:
-                    pd['roll_chain'] = chain_info['label']
-                    pd['chain_index'] = chain_info['chain_index']
-                    pd['chain_leg'] = chain_info['chain_leg']
-                else:
-                    pd['roll_chain'] = ''
-                    pd['chain_index'] = -1
-                    pd['chain_leg'] = -1
-                positions_data.append(pd)
+            combined = _merge_manual_trades(real_trades, start_date, end_date)
+            positions_data = _build_and_serialize_positions(combined, split_map, get_key)
 
             recognized = {'Sold Short', 'Bought To Open', 'Bought To Cover',
                           'Sold To Close', 'Option Expired', 'Option Assigned'}
@@ -333,7 +758,7 @@ def register_callbacks(app):
                           'chunks_total': len(chunks), 'log': log, 'summary': summary})
 
             return {
-                'trades': _serialize_trades(real_trades),
+                'trades': _serialize_trades(combined),
                 'positions': positions_data,
                 'filename': 'E-Trade API',
             }, None

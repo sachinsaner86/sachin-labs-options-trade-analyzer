@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python app.py                          # starts at http://localhost:8050
 
 # Run tests
+python -m pytest tests/ -v             # all tests (preferred)
 python tests/test_etrade_models.py     # E-Trade API normalization tests
 python tests/test_chunked_fetch.py     # date range chunking tests
 
@@ -145,6 +146,9 @@ Dash 4.0.0 completely rewrote Dropdown and DatePickerRange — they no longer us
 `trades-store` uses `storage_type='local'` (browser localStorage) so CSV/API data survives page refreshes. `session-store` also uses `'local'` for auth token persistence. Both are cleared if the user clears browser storage.
 
 The **Clear button** (header, next to Refresh) resets `trades-store` → `{}`, `fetch-log-store` → `{'status': 'idle'}`, and `analyzer-store` → `None`. It does **not** touch `session-store` or `auth-state-store`, so the E-Trade auth token survives a clear.
+
+### Manual trade entry
+The "+" Add Trade button in the header opens a modal with Add/Manage tabs. Trades are persisted in SQLite at `~/.sachin-labs-analyzer/trades.db` (`core/db.py`). Three instrument types: **Option** (equity options, auto-calc amount = qty×price×100), **Future** (hides opt_type/expiration, shows "Entry Price"), **Futures Option** (shows all option fields, manual amount entry). Manual trades merge into the position pipeline via `_merge_manual_trades()` in `callbacks.py`, filtered by the date range picker. The callback chain: `save_trade` → `manual-trades-refresh` store → `rebuild_after_manual_change` → `trades-store`. Manual trades carry `source='manual'` to distinguish from CSV/API trades during rebuild. The form resets (including instrument toggle) after each save.
 
 ### P&L Analyzer tab (Tab 5)
 `analyzer-store` holds the position dict written by `on_analyze_click` when user clicks the "Analyze" cell on an Open position in the Positions table. The Analyze column uses plain text (no markdown) — `active_cell` fires on click, no browser navigation.

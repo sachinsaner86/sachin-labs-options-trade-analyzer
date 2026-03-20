@@ -47,6 +47,12 @@ def build_header():
                     width='auto',
                 ),
                 dbc.Col([
+                    dbc.Button('+ Add Trade', id='open-trade-modal-btn', size='sm',
+                               className='me-2',
+                               style={'background': 'transparent',
+                                      'border': '1px solid rgba(0, 212, 255, 0.5)',
+                                      'color': '#00d4ff', 'fontWeight': '600',
+                                      'fontSize': '0.78rem', 'letterSpacing': '0.02em'}),
                     dbc.Button('Refresh', id='refresh-btn', size='sm',
                                className='me-2',
                                style={'background': 'linear-gradient(135deg, #0891b2, #00d4ff)',
@@ -240,7 +246,7 @@ def _positions_tab():
                     ],
                     sort_action='native',
                     filter_action='native',
-                    page_size=25,
+                    page_action='none',
                     style_table={'overflowX': 'auto', 'overflowY': 'auto',
                                   'maxHeight': '60vh'},
                     style_header={**TABLE_HEADER_STYLE, 'position': 'sticky',
@@ -494,6 +500,142 @@ def _settings_tab():
     )
 
 
+def _build_trade_modal():
+    """Modal with Add Trade and Manage Trades views."""
+    activity_options = [
+        {'label': v, 'value': v}
+        for v in ['Sold Short', 'Bought To Open', 'Bought To Cover',
+                   'Sold To Close', 'Option Expired', 'Option Assigned']
+    ]
+
+    add_form = dbc.Form([
+        # Instrument toggle
+        dbc.RadioItems(
+            id='trade-instrument-toggle',
+            options=[
+                {'label': ' Option', 'value': 'option'},
+                {'label': ' Future', 'value': 'future'},
+                {'label': ' Futures Option', 'value': 'futures_option'},
+            ],
+            value='option',
+            inline=True,
+            className='mb-3',
+        ),
+        dbc.Row([
+            dbc.Col([
+                dbc.Label('Trade Date', className='small text-secondary'),
+                dcc.DatePickerSingle(
+                    id='trade-date-picker',
+                    date=date.today(),
+                    display_format='MM/DD/YY',
+                ),
+            ], md=4),
+            dbc.Col([
+                dbc.Label('Activity Type', className='small text-secondary'),
+                dcc.Dropdown(id='trade-activity-type', options=activity_options,
+                             placeholder='Select...'),
+            ], md=4),
+            dbc.Col([
+                dbc.Label('Symbol', className='small text-secondary'),
+                dbc.Input(id='trade-symbol', type='text', placeholder='e.g. AAPL',
+                          style={'textTransform': 'uppercase'}),
+            ], md=4),
+        ], className='mb-3'),
+        # Option-specific fields (hidden for futures)
+        html.Div(id='option-only-fields-wrapper', children=[
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label('Option Type', className='small text-secondary'),
+                    dcc.Dropdown(id='trade-opt-type',
+                                 options=[{'label': 'CALL', 'value': 'CALL'},
+                                          {'label': 'PUT', 'value': 'PUT'}],
+                                 placeholder='Select...'),
+                ], md=6),
+                dbc.Col([
+                    dbc.Label('Expiration', className='small text-secondary'),
+                    dcc.DatePickerSingle(
+                        id='trade-expiration-picker',
+                        display_format='MM/DD/YY',
+                    ),
+                ], md=6),
+            ], className='mb-3'),
+        ]),
+        # Strike / Entry Price — always visible
+        dbc.Row([
+            dbc.Col([
+                dbc.Label('Strike Price', id='trade-strike-label',
+                          className='small text-secondary'),
+                dbc.Input(id='trade-strike', type='number', placeholder='0.00'),
+            ], md=4),
+        ], className='mb-3'),
+        dbc.Row([
+            dbc.Col([
+                dbc.Label('Contracts', className='small text-secondary'),
+                dbc.Input(id='trade-quantity', type='number', min=1, placeholder='0'),
+            ], md=3),
+            dbc.Col([
+                dbc.Label('Price', className='small text-secondary'),
+                dbc.Input(id='trade-price', type='number', step=0.01, placeholder='0.00'),
+            ], md=3),
+            dbc.Col([
+                dbc.Label('Amount', className='small text-secondary'),
+                dbc.Input(id='trade-amount', type='number', step=0.01, placeholder='Auto'),
+            ], md=3),
+            dbc.Col([
+                dbc.Label('Commission', className='small text-secondary'),
+                dbc.Input(id='trade-commission', type='number', step=0.01,
+                          value=0, placeholder='0.00'),
+            ], md=3),
+        ], className='mb-3'),
+        # Hidden field to track edit mode
+        dcc.Store(id='trade-edit-id', data=None),
+        html.Div(id='trade-form-feedback'),
+        dbc.Button('Save Trade', id='save-trade-btn', color='primary',
+                   className='mt-2 w-100',
+                   style={'background': 'linear-gradient(135deg, #0891b2, #00d4ff)',
+                          'border': 'none', 'fontWeight': '600'}),
+    ])
+
+    manage_view = html.Div([
+        dbc.Row([
+            dbc.Col(
+                dbc.Input(id='manage-search', type='text',
+                          placeholder='Search symbol...', size='sm'),
+                md=6,
+            ),
+            dbc.Col(
+                dcc.Dropdown(id='manage-type-filter',
+                             options=[{'label': 'All', 'value': 'all'},
+                                      {'label': 'Options', 'value': 'option'},
+                                      {'label': 'Futures', 'value': 'future'}],
+                             value='all', clearable=False),
+                md=6,
+            ),
+        ], className='mb-3'),
+        dcc.Store(id='pending-delete-store', data=None),
+        html.Div(id='manage-trades-list'),
+        html.Div(id='manage-trades-summary', className='mt-3'),
+    ])
+
+    return dbc.Modal([
+        dbc.ModalHeader(
+            dbc.Tabs([
+                dbc.Tab(label='Add Trade', tab_id='modal-tab-add'),
+                dbc.Tab(label='Manage Trades', tab_id='modal-tab-manage',
+                        id='manage-trades-tab-label'),
+            ], id='trade-modal-tabs', active_tab='modal-tab-add'),
+            close_button=True,
+            className='border-0',
+        ),
+        dbc.ModalBody([
+            html.Div(id='modal-add-view', children=add_form),
+            html.Div(id='modal-manage-view', children=manage_view,
+                     style={'display': 'none'}),
+        ]),
+    ], id='trade-modal', is_open=False, size='lg', centered=True,
+       className='trade-modal')
+
+
 def build_layout():
     """Build the complete app layout."""
     return dbc.Container([
@@ -504,6 +646,9 @@ def build_layout():
         dcc.Store(id='session-store', storage_type='local'),
         dcc.Store(id='fetch-log-store', data={'status': 'idle'}),
         dcc.Store(id='analyzer-store'),
+        dcc.Store(id='manual-trades-refresh', data=0),
+
+        _build_trade_modal(),
 
         build_header(),
         html.Div(id='fetch-status-panel'),
