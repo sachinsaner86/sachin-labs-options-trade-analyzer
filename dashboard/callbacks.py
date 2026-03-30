@@ -68,10 +68,21 @@ def _build_and_serialize_positions(trades, split_map=None, get_key=None):
 
     positions_data = []
     for p in pos_list:
+        # Compute close-trade fields before stripping trade lists
+        all_trades = p.get('open_trades', []) + p.get('close_trades', [])
+        all_manual = all(t.get('source') == 'manual' for t in all_trades) if all_trades else False
+        opens = p.get('open_trades', [])
+        instrument_type = opens[0].get('instrument_type', 'option') if opens else 'option'
+        close_qty = sum(abs(t['quantity']) for t in p.get('close_trades', []))
+        remaining_qty = p['contracts'] - close_qty
+
         pd = {k: v for k, v in p.items() if k not in ('close_trades', 'open_trades', 'contract_key')}
         pd['open_date'] = p['open_date'].isoformat() if p['open_date'] else None
         pd['close_date'] = p['close_date'].isoformat() if p['close_date'] else None
         pd['contract_key'] = list(p['contract_key'])
+        pd['all_manual'] = all_manual
+        pd['instrument_type'] = instrument_type
+        pd['remaining_qty'] = remaining_qty
         chain_info = chain_label_map.get(p['position_id'])
         if chain_info:
             pd['roll_chain'] = chain_info['label']
