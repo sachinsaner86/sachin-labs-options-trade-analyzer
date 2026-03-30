@@ -234,14 +234,30 @@ def register_callbacks(app):
         Output('option-only-fields-wrapper', 'style'),
         Output('trade-amount', 'placeholder'),
         Output('trade-strike-label', 'children'),
+        Output('trade-activity-type', 'options', allow_duplicate=True),
+        Output('trade-activity-type', 'value', allow_duplicate=True),
         Input('trade-instrument-toggle', 'value'),
+        State('close-trade-store', 'data'),
+        prevent_initial_call=True,
     )
-    def toggle_instrument_fields(instrument):
+    def toggle_instrument_fields(instrument, close_data):
+        # Don't override activity options in close mode — prefill_close_form handles it
+        if close_data:
+            activity_options = no_update
+            activity_value = no_update
+        else:
+            activity_options = [
+                {'label': v, 'value': v}
+                for v in ['Sold Short', 'Bought To Open', 'Bought To Cover',
+                           'Sold To Close', 'Option Expired', 'Option Assigned']
+            ]
+            activity_value = None  # Clear selection on instrument switch
+
         if instrument == 'future':
-            return {'display': 'none'}, 'Enter amount', 'Entry Price'
+            return {'display': 'none'}, 'Enter amount', 'Entry Price', activity_options, activity_value
         if instrument == 'futures_option':
-            return {'display': 'block'}, 'Enter amount', 'Strike Price'
-        return {'display': 'block'}, 'Auto', 'Strike Price'
+            return {'display': 'block'}, 'Enter amount', 'Strike Price', activity_options, activity_value
+        return {'display': 'block'}, 'Auto', 'Strike Price', activity_options, activity_value
 
     # ── Trade Modal: Close Mode Pre-fill and Reset ──
     @app.callback(
