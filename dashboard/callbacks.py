@@ -888,6 +888,7 @@ def register_callbacks(app):
                 'days_held': p['days_held'],
                 'status': p['status'],
                 'roll_chain': p.get('roll_chain', ''),
+                'close_trade': 'Close' if p['status'] == 'Open' and p.get('all_manual') else '',
                 'analyze': 'Analyze' if p['status'] == 'Open' else '',
                 'position_id': p['position_id'],
             })

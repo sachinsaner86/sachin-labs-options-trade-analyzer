@@ -242,6 +242,7 @@ def _positions_tab():
                         {'name': 'Days', 'id': 'days_held', 'type': 'numeric'},
                         {'name': 'Status', 'id': 'status'},
                         {'name': 'Roll Chain', 'id': 'roll_chain'},
+                        {'name': '', 'id': 'close_trade'},
                         {'name': '', 'id': 'analyze'},
                     ],
                     sort_action='native',
