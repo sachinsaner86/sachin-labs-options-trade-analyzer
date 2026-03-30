@@ -573,6 +573,8 @@ def _build_trade_modal():
             dbc.Col([
                 dbc.Label('Contracts', className='small text-secondary'),
                 dbc.Input(id='trade-quantity', type='number', min=1, placeholder='0'),
+                html.Div(id='qty-warning', style={'display': 'none'},
+                         className='small mt-1'),
             ], md=3),
             dbc.Col([
                 dbc.Label('Price', className='small text-secondary'),
@@ -619,12 +621,16 @@ def _build_trade_modal():
     ])
 
     return dbc.Modal([
-        dbc.ModalHeader(
+        dbc.ModalHeader([
             dbc.Tabs([
                 dbc.Tab(label='Add Trade', tab_id='modal-tab-add'),
                 dbc.Tab(label='Manage Trades', tab_id='modal-tab-manage',
                         id='manage-trades-tab-label'),
             ], id='trade-modal-tabs', active_tab='modal-tab-add'),
+            html.H5('Close Trade', id='close-mode-title',
+                     style={'display': 'none', 'color': '#00d4ff',
+                            'fontFamily': "'Sora', sans-serif", 'margin': 0}),
+        ],
             close_button=True,
             className='border-0',
         ),
@@ -648,6 +654,7 @@ def build_layout():
         dcc.Store(id='fetch-log-store', data={'status': 'idle'}),
         dcc.Store(id='analyzer-store'),
         dcc.Store(id='manual-trades-refresh', data=0),
+        dcc.Store(id='close-trade-store', data=None),
 
         _build_trade_modal(),
 
