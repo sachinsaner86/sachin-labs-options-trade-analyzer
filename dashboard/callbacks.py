@@ -353,6 +353,29 @@ def register_callbacks(app):
             f"Open quantity: {remaining}", {'display': 'block', 'color': '#ffb347'},
         )
 
+    # ── Trade Modal: Quantity Validation Warning ──
+    @app.callback(
+        Output('qty-warning', 'children', allow_duplicate=True),
+        Output('qty-warning', 'style'),
+        Input('trade-quantity', 'value'),
+        State('close-trade-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def validate_close_qty(qty, close_data):
+        if not close_data or not qty:
+            return '', {'display': 'none'}
+
+        remaining = close_data.get('remaining_qty', 0)
+        if qty > remaining:
+            return (
+                f'Exceeds open quantity of {remaining}',
+                {'display': 'block', 'color': '#ffb347'},
+            )
+        return (
+            f'Open quantity: {remaining}',
+            {'display': 'block', 'color': '#8b949e'},
+        )
+
     # ── Trade Modal: Amount Auto-calc for Options ──
     @app.callback(
         Output('trade-amount', 'value'),

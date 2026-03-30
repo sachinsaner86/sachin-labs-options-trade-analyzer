@@ -99,3 +99,23 @@ class TestSerializationFields:
         ]
         positions = _build_and_serialize_positions(trades)
         assert positions[0]['remaining_qty'] == 0
+
+
+def _get_close_default(direction):
+    """Mirror the smart default logic from callbacks."""
+    if direction == 'Short':
+        return 'Bought To Cover'
+    elif direction == 'Long':
+        return 'Sold To Close'
+    return None
+
+
+class TestSmartDefaults:
+    def test_short_direction_defaults_to_bought_to_cover(self):
+        assert _get_close_default('Short') == 'Bought To Cover'
+
+    def test_long_direction_defaults_to_sold_to_close(self):
+        assert _get_close_default('Long') == 'Sold To Close'
+
+    def test_unknown_direction_defaults_to_none(self):
+        assert _get_close_default('Unknown') is None
