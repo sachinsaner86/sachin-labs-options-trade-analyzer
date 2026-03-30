@@ -206,14 +206,17 @@ def register_callbacks(app):
     # ── Trade Modal: Open/Close ──
     @app.callback(
         Output('trade-modal', 'is_open'),
+        Output('close-trade-store', 'data'),
         Input('open-trade-modal-btn', 'n_clicks'),
         State('trade-modal', 'is_open'),
         prevent_initial_call=True,
     )
     def toggle_trade_modal(n_clicks, is_open):
         if n_clicks:
-            return not is_open
-        return is_open
+            new_state = not is_open
+            # Clear close mode when opening via Add button (ensures normal add mode)
+            return new_state, None
+        return is_open, no_update
 
     # ── Trade Modal: Tab Toggle ──
     @app.callback(
@@ -239,6 +242,116 @@ def register_callbacks(app):
         if instrument == 'futures_option':
             return {'display': 'block'}, 'Enter amount', 'Strike Price'
         return {'display': 'block'}, 'Auto', 'Strike Price'
+
+    # ── Trade Modal: Close Mode Pre-fill and Reset ──
+    @app.callback(
+        # Header: hide tabs, show close title (or vice versa)
+        Output('trade-modal-tabs', 'style'),
+        Output('close-mode-title', 'style'),
+        # Force active tab to Add (prevents form hidden if user was on Manage tab)
+        Output('trade-modal-tabs', 'active_tab', allow_duplicate=True),
+        # Pre-fill fields
+        Output('trade-instrument-toggle', 'value', allow_duplicate=True),
+        Output('trade-symbol', 'value', allow_duplicate=True),
+        Output('trade-opt-type', 'value', allow_duplicate=True),
+        Output('trade-strike', 'value', allow_duplicate=True),
+        Output('trade-expiration-picker', 'date', allow_duplicate=True),
+        Output('trade-activity-type', 'value', allow_duplicate=True),
+        Output('trade-activity-type', 'options', allow_duplicate=True),
+        Output('trade-quantity', 'value', allow_duplicate=True),
+        # Disable/enable read-only fields
+        Output('trade-instrument-toggle', 'className'),
+        Output('trade-symbol', 'disabled'),
+        Output('trade-opt-type', 'disabled'),
+        Output('trade-strike', 'disabled'),
+        Output('trade-expiration-picker', 'disabled'),
+        # Quantity warning
+        Output('qty-warning', 'children'),
+        Output('qty-warning', 'style', allow_duplicate=True),
+        Input('close-trade-store', 'data'),
+        Input('trade-modal', 'is_open'),
+        State('trade-edit-id', 'data'),
+        prevent_initial_call=True,
+    )
+    def prefill_close_form(close_data, is_open, edit_id):
+        all_activity_options = [
+            {'label': v, 'value': v}
+            for v in ['Sold Short', 'Bought To Open', 'Bought To Cover',
+                       'Sold To Close', 'Option Expired', 'Option Assigned']
+        ]
+        close_only_options = [
+            {'label': v, 'value': v}
+            for v in ['Bought To Cover', 'Sold To Close', 'Option Expired', 'Option Assigned']
+        ]
+        future_close_options = [
+            {'label': v, 'value': v}
+            for v in ['Bought To Cover', 'Sold To Close']
+        ]
+
+        _no_change = (
+            no_update, no_update, no_update,
+            no_update, no_update, no_update, no_update, no_update,
+            no_update, no_update, no_update,
+            no_update, no_update, no_update, no_update, no_update,
+            no_update, no_update,
+        )
+
+        # Don't interfere with edit mode
+        if edit_id:
+            return _no_change
+
+        # Modal closed — clear close mode
+        if not is_open:
+            return (
+                {'display': 'block'}, {'display': 'none'},  # tabs visible, title hidden
+                no_update,  # don't change active tab
+                no_update, no_update, no_update, no_update, no_update,  # don't clear fields
+                no_update, all_activity_options, no_update,  # restore all activity options
+                'mb-3', False, False, False, False,  # re-enable all fields
+                '', {'display': 'none'},  # clear warning
+            )
+
+        # No close data — normal add mode
+        if not close_data:
+            return (
+                {'display': 'block'}, {'display': 'none'},  # tabs visible, title hidden
+                no_update,
+                no_update, no_update, no_update, no_update, no_update,
+                no_update, all_activity_options, no_update,
+                'mb-3', False, False, False, False,
+                '', {'display': 'none'},
+            )
+
+        # Close mode — pre-fill and lock fields
+        direction = close_data.get('direction', '')
+        instrument = close_data.get('instrument_type', 'option')
+        remaining = close_data.get('remaining_qty', 0)
+
+        # Smart default
+        if direction == 'Short':
+            default_activity = 'Bought To Cover'
+        elif direction == 'Long':
+            default_activity = 'Sold To Close'
+        else:
+            default_activity = None
+
+        # Activity options filtered by instrument
+        if instrument == 'future':
+            activity_opts = future_close_options
+        else:
+            activity_opts = close_only_options
+
+        return (
+            {'display': 'none'}, {'display': 'block', 'color': '#00d4ff',
+                                   'fontFamily': "'Sora', sans-serif", 'margin': 0},
+            'modal-tab-add',  # force Add tab visible
+            instrument, close_data['symbol'],
+            close_data.get('opt_type'), close_data.get('strike'),
+            close_data.get('expiration'),
+            default_activity, activity_opts, remaining,
+            'mb-3 disabled-toggle', True, True, True, True,  # disable fields
+            f"Open quantity: {remaining}", {'display': 'block', 'color': '#ffb347'},
+        )
 
     # ── Trade Modal: Amount Auto-calc for Options ──
     @app.callback(
@@ -1020,36 +1133,71 @@ def register_callbacks(app):
         fig = monthly_income_chart(monthly)
         return fig, monthly
 
-    # ── P&L Analyzer: Analyze button click → tab switch + store write ──
+    # ── P&L Analyzer / Close Trade: cell click handler ──
     @app.callback(
         Output('analyzer-store', 'data'),
         Output('main-tabs', 'active_tab'),
+        Output('close-trade-store', 'data', allow_duplicate=True),
+        Output('trade-modal', 'is_open', allow_duplicate=True),
         Input('positions-table', 'active_cell'),
         State('positions-table', 'data'),
         State('trades-store', 'data'),
         prevent_initial_call=True,
     )
-    def on_analyze_click(active_cell, table_data, trades_data):
+    def on_analyze_or_close_click(active_cell, table_data, trades_data):
         if not active_cell or not table_data or not trades_data:
-            return no_update, no_update
-        if active_cell.get('column_id') != 'analyze':
-            return no_update, no_update
+            return no_update, no_update, no_update, no_update
 
+        column_id = active_cell.get('column_id')
         row = table_data[active_cell['row']]
-        if row.get('status') != 'Open':
-            return no_update, no_update
 
-        position_id = row.get('position_id', '')
-        position = None
-        for p in trades_data.get('positions', []):
-            if p['position_id'] == position_id:
-                position = p
-                break
+        if column_id == 'close_trade' and row.get('close_trade') == 'Close':
+            # Find position in trades-store for full data
+            position_id = row.get('position_id', '')
+            position = None
+            for p in trades_data.get('positions', []):
+                if p['position_id'] == position_id:
+                    position = p
+                    break
+            if not position:
+                return no_update, no_update, no_update, no_update
 
-        if not position:
-            return no_update, no_update
+            # Convert expiration from MM/DD/YY to ISO for DatePickerSingle
+            exp = position['expiration']
+            if exp:
+                try:
+                    exp = datetime.strptime(exp, '%m/%d/%y').strftime('%Y-%m-%d')
+                except ValueError:
+                    pass  # already ISO format from API
 
-        return position, 'tab-analyzer'
+            close_data = {
+                'symbol': position['symbol'],
+                'opt_type': position['opt_type'],
+                'strike': position['original_strike'],
+                'expiration': exp,
+                'instrument_type': position.get('instrument_type', 'option'),
+                'direction': position['direction'],
+                'remaining_qty': position.get('remaining_qty', position['contracts']),
+            }
+            return no_update, no_update, close_data, True
+
+        if column_id == 'analyze':
+            if row.get('status') != 'Open':
+                return no_update, no_update, no_update, no_update
+
+            position_id = row.get('position_id', '')
+            position = None
+            for p in trades_data.get('positions', []):
+                if p['position_id'] == position_id:
+                    position = p
+                    break
+
+            if not position:
+                return no_update, no_update, no_update, no_update
+
+            return position, 'tab-analyzer', no_update, no_update
+
+        return no_update, no_update, no_update, no_update
 
     # ── P&L Analyzer: Populate legs + fetch quote ──
     @app.callback(

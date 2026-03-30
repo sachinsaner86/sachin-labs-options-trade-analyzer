@@ -997,3 +997,13 @@ hr {
     display: flex;
     gap: 1.5rem;
 }
+
+/* ── Disabled instrument toggle in close mode ── */
+.disabled-toggle .form-check-input {
+    pointer-events: none;
+    opacity: 0.5;
+}
+.disabled-toggle .form-check-label {
+    pointer-events: none;
+    opacity: 0.5;
+}
