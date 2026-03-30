@@ -412,6 +412,7 @@ def register_callbacks(app):
         Output('trade-price', 'value'),
         Output('trade-amount', 'value', allow_duplicate=True),
         Output('trade-commission', 'value'),
+        Output('close-trade-store', 'data', allow_duplicate=True),
         Input('save-trade-btn', 'n_clicks'),
         State('trade-edit-id', 'data'),
         State('trade-instrument-toggle', 'value'),
@@ -431,7 +432,7 @@ def register_callbacks(app):
                    symbol, opt_type, strike, expiration, quantity, price, amount,
                    commission):
         if not n_clicks:
-            return no_update, no_update, no_update, *([no_update] * 9)
+            return no_update, no_update, no_update, *([no_update] * 10)
 
         # Validate required fields
         errors = []
@@ -457,7 +458,7 @@ def register_callbacks(app):
 
         if errors:
             feedback = html.Div('; '.join(errors), className='trade-toast-error')
-            return feedback, no_update, no_update, *([no_update] * 9)
+            return feedback, no_update, no_update, *([no_update] * 10)
 
         from core.db import add_trade, update_trade
 
@@ -491,11 +492,11 @@ def register_callbacks(app):
                 msg = 'Trade added'
         except Exception as e:
             feedback = html.Div(f'Error: {e}', className='trade-toast-error')
-            return feedback, no_update, no_update, *([no_update] * 9)
+            return feedback, no_update, no_update, *([no_update] * 10)
 
         feedback = html.Div(msg, className='trade-toast-success')
-        # Clear form + bump refresh counter (12 values total)
-        return feedback, (edit_id or 0) + 1, None, 'option', '', None, None, None, None, None, None, 0
+        # Clear form + bump refresh counter + clear close-trade-store (13 values total)
+        return feedback, (edit_id or 0) + 1, None, 'option', '', None, None, None, None, None, None, 0, None
 
     # ── Rebuild trades-store after manual trade changes ──
     @app.callback(
