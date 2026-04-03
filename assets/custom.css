@@ -663,6 +663,22 @@ label, .form-label {
     box-shadow: 0 0 16px rgba(0, 212, 255, 0.3);
 }
 
+/* ── Close Trade Cell ── */
+#positions-table td[data-dash-column="close_trade"] .dash-cell-value {
+    color: var(--cyan);
+    font-family: var(--font-ui) !important;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+#positions-table td[data-dash-column="close_trade"]:hover .dash-cell-value {
+    color: var(--bg-abyss);
+    background: linear-gradient(135deg, var(--cyan-dim), var(--cyan));
+    box-shadow: 0 0 16px rgba(0, 212, 255, 0.3);
+}
+
 /* ── P&L Analyzer: Legs Table ── */
 #analyzer-legs-table .dash-spreadsheet-inner input {
     background-color: var(--bg-input) !important;
@@ -980,4 +996,14 @@ hr {
     color: var(--text-secondary);
     display: flex;
     gap: 1.5rem;
+}
+
+/* ── Disabled instrument toggle in close mode ── */
+.disabled-toggle .form-check-input {
+    pointer-events: none;
+    opacity: 0.5;
+}
+.disabled-toggle .form-check-label {
+    pointer-events: none;
+    opacity: 0.5;
 }
