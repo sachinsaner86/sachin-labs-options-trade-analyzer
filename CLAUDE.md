@@ -59,6 +59,7 @@ If `activity_type` doesn't match, trades are silently ignored and positions will
 - Expiration is in separate fields: `product.expiryYear`, `product.expiryMonth`, `product.expiryDay` — there is no `product.expiryDate`
 - Net cash flow is in top-level `txn.amount`; commission is in `brokerage.fee`
 - `brokerage.quantity` is negative for short sells — use `abs()`
+- **Empty body on pagination** (already fixed, don't revert): E-Trade may return an empty body (no Content) for 90-day chunks with no transactions — check `resp.content` before calling `resp.json()`, treat empty as end-of-results (break). Also detect HTML responses (session expiry) by checking `Content-Type` and first byte before parsing JSON.
 
 ### Config defaults
 `config.py` loads from `.env` via `python-dotenv`. Defaults when env vars are absent: `HOST=127.0.0.1`, `PORT=8050`, `DEBUG=true`. E-Trade base/auth URLs are hardcoded.

@@ -112,6 +112,11 @@ def get_transactions(session, account_id_key, start_date=None, end_date=None):
 
         resp = session.get(url, params=params)
         resp.raise_for_status()
+        if not resp.content:
+            break
+        content_type = resp.headers.get('Content-Type', '')
+        if 'json' not in content_type and resp.content[:1] == b'<':
+            raise ValueError(f'E-Trade returned HTML instead of JSON (HTTP {resp.status_code}) — session may have expired')
         data = resp.json()
 
         txn_response = data.get('TransactionListResponse', {})

@@ -35,7 +35,8 @@ Database location: `~/.sachin-labs-analyzer/trades.db` (configurable via `DB_PAT
 CREATE TABLE manual_trades (
     trade_id        TEXT PRIMARY KEY,   -- uuid4
     date            TEXT NOT NULL,      -- ISO format
-    activity_type   TEXT NOT NULL,      -- one of 6 recognized values
+    activity_type   TEXT NOT NULL,      -- one of 6 recognized valuesclear
+    
     symbol          TEXT NOT NULL,      -- e.g., 'AAPL' or '/ESH26'
     opt_type        TEXT,               -- 'CALL' or 'PUT'; NULL for futures
     expiration      TEXT,               -- MM/DD/YY; NULL for futures

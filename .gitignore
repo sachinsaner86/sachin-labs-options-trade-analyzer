@@ -34,3 +34,6 @@ data/
 
 # Generated
 options_pl_analysis.png
+
+# Worktrees
+.worktrees/
