@@ -431,6 +431,7 @@ def register_callbacks(app):
         Output('close-trade-store', 'data', allow_duplicate=True),
         Input('save-trade-btn', 'n_clicks'),
         State('trade-edit-id', 'data'),
+        State('manual-trades-refresh', 'data'),
         State('trade-instrument-toggle', 'value'),
         State('trade-date-picker', 'date'),
         State('trade-activity-type', 'value'),
@@ -444,7 +445,7 @@ def register_callbacks(app):
         State('trade-commission', 'value'),
         prevent_initial_call=True,
     )
-    def save_trade(n_clicks, edit_id, instrument, trade_date, activity_type,
+    def save_trade(n_clicks, edit_id, refresh_counter, instrument, trade_date, activity_type,
                    symbol, opt_type, strike, expiration, quantity, price, amount,
                    commission):
         if not n_clicks:
@@ -485,6 +486,15 @@ def register_callbacks(app):
             exp_dt = datetime.fromisoformat(expiration) if isinstance(expiration, str) else expiration
             exp_str = exp_dt.strftime('%m/%d/%y')
 
+        # Enforce sign convention: sells receive cash (positive), buys pay cash (negative).
+        # For options, auto_calc already provides the correct sign; abs()+re-sign is idempotent.
+        # For futures, the user enters a raw number — we must apply the sign here.
+        signed_amount = float(amount)
+        if activity_type in ('Sold Short', 'Sold To Close'):
+            signed_amount = abs(signed_amount)
+        elif activity_type in ('Bought To Cover', 'Bought To Open'):
+            signed_amount = -abs(signed_amount)
+
         trade_dict = {
             'date': datetime.fromisoformat(trade_date) if isinstance(trade_date, str) else trade_date,
             'activity_type': activity_type,
@@ -494,7 +504,7 @@ def register_callbacks(app):
             'strike': float(strike) if strike else None,
             'quantity': int(quantity),
             'price': float(price),
-            'amount': float(amount),
+            'amount': signed_amount,
             'commission': float(commission) if commission else 0,
             'instrument_type': instrument,
         }
@@ -512,7 +522,7 @@ def register_callbacks(app):
 
         feedback = html.Div(msg, className='trade-toast-success')
         # Clear form + bump refresh counter + clear close-trade-store (13 values total)
-        return feedback, (edit_id or 0) + 1, None, 'option', '', None, None, None, None, None, None, 0, None
+        return feedback, (refresh_counter or 0) + 1, None, 'option', '', None, None, None, None, None, None, 0, None
 
     # ── Rebuild trades-store after manual trade changes ──
     @app.callback(
@@ -1179,6 +1189,7 @@ def register_callbacks(app):
         Output('main-tabs', 'active_tab'),
         Output('close-trade-store', 'data', allow_duplicate=True),
         Output('trade-modal', 'is_open', allow_duplicate=True),
+        Output('trade-edit-id', 'data', allow_duplicate=True),
         Input('positions-table', 'active_cell'),
         State('positions-table', 'data'),
         State('trades-store', 'data'),
@@ -1186,7 +1197,7 @@ def register_callbacks(app):
     )
     def on_analyze_or_close_click(active_cell, table_data, trades_data):
         if not active_cell or not table_data or not trades_data:
-            return no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update
 
         column_id = active_cell.get('column_id')
         row = table_data[active_cell['row']]
@@ -1200,7 +1211,7 @@ def register_callbacks(app):
                     position = p
                     break
             if not position:
-                return no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update
 
             # Convert expiration from MM/DD/YY to ISO for DatePickerSingle
             exp = position['expiration']
@@ -1219,11 +1230,11 @@ def register_callbacks(app):
                 'direction': position['direction'],
                 'remaining_qty': position.get('remaining_qty', position['contracts']),
             }
-            return no_update, no_update, close_data, True
+            return no_update, no_update, close_data, True, None  # None clears trade-edit-id
 
         if column_id == 'analyze':
             if row.get('status') != 'Open':
-                return no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update
 
             position_id = row.get('position_id', '')
             position = None
@@ -1233,11 +1244,11 @@ def register_callbacks(app):
                     break
 
             if not position:
-                return no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update
 
-            return position, 'tab-analyzer', no_update, no_update
+            return position, 'tab-analyzer', no_update, no_update, no_update
 
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
 
     # ── P&L Analyzer: Populate legs + fetch quote ──
     @app.callback(

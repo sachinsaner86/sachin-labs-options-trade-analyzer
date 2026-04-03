@@ -150,6 +150,17 @@ The **Clear button** (header, next to Refresh) resets `trades-store` → `{}`, `
 ### Manual trade entry
 The "+" Add Trade button in the header opens a modal with Add/Manage tabs. Trades are persisted in SQLite at `~/.sachin-labs-analyzer/trades.db` (`core/db.py`). Three instrument types: **Option** (equity options, auto-calc amount = qty×price×100), **Future** (hides opt_type/expiration, shows "Entry Price"), **Futures Option** (shows all option fields, manual amount entry). Manual trades merge into the position pipeline via `_merge_manual_trades()` in `callbacks.py`, filtered by the date range picker. The callback chain: `save_trade` → `manual-trades-refresh` store → `rebuild_after_manual_change` → `trades-store`. Manual trades carry `source='manual'` to distinguish from CSV/API trades during rebuild. The form resets (including instrument toggle) after each save.
 
+### Close trade for manual positions
+Open manual positions show a **CLOSE** button in the Positions table (before the ANALYZE column). Clicking it opens the Add Trade modal in close mode with fields pre-filled and read-only, and the activity type defaulted by direction (Short → Bought To Cover, Long → Sold To Close).
+
+**Serialization boundary rule**: `all_manual`, `instrument_type`, `remaining_qty` are computed on each position BEFORE stripping `open_trades`/`close_trades` in `_build_and_serialize_positions()`. Any future per-position fields derived from trade lists must also be computed before the strip.
+
+**Close mode state**: `close-trade-store` (`dcc.Store`) carries pre-fill data. `prefill_close_form` checks `State('trade-edit-id', 'data')` and skips if edit mode is active. `on_analyze_or_close_click` clears `trade-edit-id` to `None` when entering close mode — critical to prevent `save_trade` from calling `update_trade()` on a stale UUID.
+
+**Amount sign convention**: `save_trade` enforces sign by activity_type — sells (`Sold Short`, `Sold To Close`) → positive, buys (`Bought To Cover`, `Bought To Open`) → negative. This is required for futures where the user enters a raw number; idempotent for options where auto_calc already signs correctly.
+
+**After DB changes via script**: `trades-store` in browser localStorage caches old data. Click **Clear** in the header to flush and force a re-read from SQLite.
+
 ### P&L Analyzer tab (Tab 5)
 `analyzer-store` holds the position dict written by `on_analyze_click` when user clicks the "Analyze" cell on an Open position in the Positions table. The Analyze column uses plain text (no markdown) — `active_cell` fires on click, no browser navigation.
 
