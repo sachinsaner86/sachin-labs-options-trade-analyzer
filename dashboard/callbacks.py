@@ -1064,8 +1064,9 @@ def register_callbacks(app):
         Output('rolls-container', 'children'),
         Input('trades-store', 'data'),
         Input('main-tabs', 'active_tab'),
+        Input('broken-chains-store', 'data'),
     )
-    def update_rolls_tab(data, active_tab):
+    def update_rolls_tab(data, active_tab, broken_chains):
         if active_tab != 'tab-rolls' or not data:
             return html.P('Upload a CSV or connect to E-Trade to see roll chains.',
                           style={'color': '#484f58', 'fontSize': '0.88rem',
@@ -1094,6 +1095,7 @@ def register_callbacks(app):
             times_rolled = len(chain) - 1
 
             pnl_col = '#00ff88' if chain_pnl >= 0 else '#ff6b6b'
+            chain_key = chain[0]['position_id']
 
             leg_rows = []
             for i, p in enumerate(chain):
@@ -1137,9 +1139,22 @@ def register_callbacks(app):
                     html.Span(f" \u00b7 Rolled {times_rolled}x",
                               style={'color': '#8b949e', 'marginLeft': '8px'}),
                     html.Span(
-                        f"Chain P&L: {format_currency(chain_pnl)}",
-                        style={'color': pnl_col, 'fontWeight': 'bold', 'float': 'right',
-                               'fontFamily': "'IBM Plex Mono', monospace"},
+                        style={'float': 'right', 'display': 'flex',
+                               'alignItems': 'center', 'gap': '12px'},
+                        children=[
+                            dbc.Button(
+                                'Break Chain',
+                                id={'type': 'break-chain-btn', 'index': chain_key},
+                                size='sm',
+                                color='danger',
+                                outline=True,
+                            ),
+                            html.Span(
+                                f"Chain P&L: {format_currency(chain_pnl)}",
+                                style={'color': pnl_col, 'fontWeight': 'bold',
+                                       'fontFamily': "'IBM Plex Mono', monospace"},
+                            ),
+                        ],
                     ),
                 ]),
                 dbc.CardBody(
@@ -1157,6 +1172,34 @@ def register_callbacks(app):
             ], className='mb-3 roll-chain-card')
 
             cards.append(card)
+
+        # Broken chain cards
+        for bc in (broken_chains or []):
+            bkey = bc['chain_key']
+            desc = bc.get('description', bkey)
+            cards.append(dbc.Card([
+                dbc.CardHeader(
+                    html.Span(
+                        style={'display': 'flex', 'alignItems': 'center',
+                               'justifyContent': 'space-between'},
+                        children=[
+                            html.Span(
+                                f"⊘  {desc}  ·  broken — positions now standalone",
+                                style={'color': 'var(--text-muted)',
+                                       'fontFamily': "'DM Sans', sans-serif",
+                                       'fontSize': '0.9rem'},
+                            ),
+                            dbc.Button(
+                                'Restore Chain',
+                                id={'type': 'restore-chain-btn', 'index': bkey},
+                                size='sm',
+                                color='secondary',
+                                outline=True,
+                            ),
+                        ],
+                    ),
+                ),
+            ], className='mb-2', style={'opacity': '0.6'}))
 
         return cards
 
