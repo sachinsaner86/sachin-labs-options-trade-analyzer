@@ -1203,6 +1203,71 @@ def register_callbacks(app):
 
         return cards
 
+    # ── Populate broken-chains-store ──
+    @app.callback(
+        Output('broken-chains-store', 'data'),
+        Input('manual-trades-refresh', 'data'),
+    )
+    def populate_broken_chains_store(refresh):
+        from core.db import get_all_broken_chains
+        return get_all_broken_chains()
+
+    # ── Break chain ──
+    @app.callback(
+        Output('manual-trades-refresh', 'data', allow_duplicate=True),
+        Input({'type': 'break-chain-btn', 'index': ALL}, 'n_clicks'),
+        State('trades-store', 'data'),
+        State('manual-trades-refresh', 'data'),
+        prevent_initial_call=True,
+    )
+    def break_chain(n_clicks, data, refresh_counter):
+        if not any(n_clicks):
+            return no_update
+        chain_key = ctx.triggered_id['index']
+        positions = (data or {}).get('positions', [])
+
+        head = next((p for p in positions if p['position_id'] == chain_key), None)
+        if head is None:
+            return no_update
+
+        chain_idx = head.get('chain_index', -1)
+        if chain_idx < 0:
+            return no_update
+
+        chain_legs = sorted(
+            [p for p in positions if p.get('chain_index') == chain_idx],
+            key=lambda p: p.get('chain_leg', 0),
+        )
+        if len(chain_legs) < 2:
+            return no_update
+
+        pairs = [
+            (chain_legs[i]['position_id'], chain_legs[i + 1]['position_id'])
+            for i in range(len(chain_legs) - 1)
+        ]
+        symbol = head.get('symbol', '')
+        opt_type = head.get('opt_type') or 'Future'
+        description = f"{symbol} {opt_type} · {len(chain_legs)} legs"
+
+        from core.db import add_broken_chain
+        add_broken_chain(chain_key, pairs, description)
+        return (refresh_counter or 0) + 1
+
+    # ── Restore chain ──
+    @app.callback(
+        Output('manual-trades-refresh', 'data', allow_duplicate=True),
+        Input({'type': 'restore-chain-btn', 'index': ALL}, 'n_clicks'),
+        State('manual-trades-refresh', 'data'),
+        prevent_initial_call=True,
+    )
+    def restore_chain(n_clicks, refresh_counter):
+        if not any(n_clicks):
+            return no_update
+        chain_key = ctx.triggered_id['index']
+        from core.db import remove_broken_chain
+        remove_broken_chain(chain_key)
+        return (refresh_counter or 0) + 1
+
     # ── Monthly Income Tab ──
     @app.callback(
         Output('monthly-chart', 'figure'),
