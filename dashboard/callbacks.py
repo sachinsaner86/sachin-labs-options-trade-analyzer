@@ -15,7 +15,7 @@ from core.rolls import detect_rolls
 from core.monthly import build_monthly_data
 from dashboard.components import kpi_card, format_currency, KPI_ICONS
 from dashboard.charts import monthly_income_chart, pnl_by_symbol_chart, pl_heatmap_chart, greeks_chart
-from core.db import get_all_trades as get_manual_trades
+from core.db import get_all_trades as get_manual_trades, get_broken_pairs
 
 
 def _serialize_trades(real_trades):
@@ -64,7 +64,8 @@ def _build_and_serialize_positions(trades, split_map=None, get_key=None):
         get_key = lambda t: (t['symbol'], t['opt_type'], t['expiration'], t['strike'])
 
     pos_list = build_positions(trades, split_map, get_key)
-    chains, standalone, chain_label_map = detect_rolls(pos_list)
+    broken_pairs = get_broken_pairs()
+    chains, standalone, chain_label_map = detect_rolls(pos_list, broken_pairs)
 
     positions_data = []
     for p in pos_list:

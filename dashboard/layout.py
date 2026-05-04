@@ -654,6 +654,7 @@ def build_layout():
         dcc.Store(id='fetch-log-store', data={'status': 'idle'}),
         dcc.Store(id='analyzer-store'),
         dcc.Store(id='manual-trades-refresh', data=0),
+        dcc.Store(id='broken-chains-store', data=[]),
         dcc.Store(id='close-trade-store', data=None),
 
         _build_trade_modal(),
