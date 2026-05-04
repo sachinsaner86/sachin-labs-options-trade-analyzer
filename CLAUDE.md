@@ -41,7 +41,14 @@ The normalized trade dict format is the contract between the two sources and `co
 Each position gets a stable `position_id` string (`symbol_optType_expiration_strike_openDate`) in `build_positions()`. This ID is used by `detect_rolls()` for chain matching and by `callbacks.py` for serialization through `dcc.Store`. Never use Python `id()` for position identity — it breaks across serialization boundaries.
 
 ### Roll chain data
-`detect_rolls()` returns a `chain_label_map` keyed by `position_id`, with values `{chain_index: int, chain_leg: int, label: str}`. The dashboard serializes `chain_index` and `chain_leg` as integers on each position dict, so the Rolls tab can reconstruct chains by grouping on `chain_index` and sorting by `chain_leg` (preserving the original detection order). Never reconstruct chain ordering from string labels or by re-sorting on dates.
+`detect_rolls(pos_list, broken_pairs=None)` returns a `chain_label_map` keyed by `position_id`, with values `{chain_index: int, chain_leg: int, label: str}`. The dashboard serializes `chain_index` and `chain_leg` as integers on each position dict, so the Rolls tab can reconstruct chains by grouping on `chain_index` and sorting by `chain_leg` (preserving the original detection order). Never reconstruct chain ordering from string labels or by re-sorting on dates.
+
+### Break Chain (user-dismissible false-positive chains)
+`detect_rolls()` accepts an optional `broken_pairs: set[tuple[str,str]]` — pairs skipped during chain linking. `_build_and_serialize_positions()` calls `get_broken_pairs()` from `core/db.py` and passes it in on every rebuild.
+
+Broken pairs are stored in the `broken_chains` SQLite table (`chain_key`, `position_id_from`, `position_id_to`, `description`, `created_at`). `chain_key` = head position's `position_id`. `add_broken_chain` uses an explicit `BEGIN` for atomicity.
+
+`broken-chains-store` (`dcc.Store(data=[])`) holds the list from `get_all_broken_chains()` for display. It is an **Input** (not State) to `update_rolls_tab` to avoid stale renders — the tab fires twice on break/restore (once per store update) but renders are idempotent. `populate_broken_chains_store` fires on every `manual-trades-refresh` change including page load (`prevent_initial_call=False`).
 
 ### activity_type values
 `build_positions()` in `core/positions.py` only recognizes these exact strings:
