@@ -43,6 +43,16 @@ def _ensure_schema(conn):
             updated_at      TEXT NOT NULL
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS broken_chains (
+            chain_key        TEXT NOT NULL,
+            position_id_from TEXT NOT NULL,
+            position_id_to   TEXT NOT NULL,
+            description      TEXT NOT NULL,
+            created_at       TEXT NOT NULL,
+            PRIMARY KEY (chain_key, position_id_from, position_id_to)
+        )
+    ''')
     conn.commit()
 
 
@@ -146,6 +156,59 @@ def delete_trade(trade_id):
     conn = _get_conn()
     try:
         conn.execute('DELETE FROM manual_trades WHERE trade_id = ?', (trade_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_broken_pairs():
+    """Return all (position_id_from, position_id_to) pairs across all broken chains."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            'SELECT position_id_from, position_id_to FROM broken_chains'
+        ).fetchall()
+        return {(r['position_id_from'], r['position_id_to']) for r in rows}
+    finally:
+        conn.close()
+
+
+def get_all_broken_chains():
+    """Return one dict per chain_key: {chain_key, description, created_at}."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            'SELECT chain_key, MIN(description) as description, MIN(created_at) as created_at '
+            'FROM broken_chains GROUP BY chain_key'
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_broken_chain(chain_key, pairs, description):
+    """Upsert: delete existing rows for chain_key then insert all new pairs in one transaction."""
+    now = datetime.now().isoformat()
+    conn = _get_conn()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM broken_chains WHERE chain_key = ?', (chain_key,))
+        conn.executemany(
+            'INSERT INTO broken_chains '
+            '(chain_key, position_id_from, position_id_to, description, created_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+            [(chain_key, frm, to, description, now) for frm, to in pairs],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_broken_chain(chain_key):
+    """Delete all rows for chain_key, restoring it to active detection."""
+    conn = _get_conn()
+    try:
+        conn.execute('DELETE FROM broken_chains WHERE chain_key = ?', (chain_key,))
         conn.commit()
     finally:
         conn.close()
