@@ -1,14 +1,17 @@
 """Roll detection and chain building for options positions."""
 
 
-def detect_rolls(pos_list):
+def detect_rolls(pos_list, broken_pairs=None):
     """Detect roll chains from a list of positions.
+
+    broken_pairs: optional set of (position_id_from, position_id_to) tuples to skip.
 
     Returns (chains, standalone, chain_label_map) where:
     - chains: list of lists, each inner list is a chain of rolled positions
     - standalone: positions not part of any chain
     - chain_label_map: dict mapping position id -> label string
     """
+    broken_pairs = broken_pairs or set()
     close_index = {}
     open_index = {}
 
@@ -40,6 +43,8 @@ def detect_rolls(pos_list):
                         c_pid = c['position_id']
                         o_pid = o['position_id']
                         if c_pid not in roll_from and o_pid not in roll_to:
+                            if (c_pid, o_pid) in broken_pairs:
+                                continue
                             roll_from[c_pid] = o
                             roll_to[o_pid] = c
 
