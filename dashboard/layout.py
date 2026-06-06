@@ -620,12 +620,15 @@ def _build_trade_modal():
         html.Div(id='manage-trades-summary', className='mt-3'),
     ])
 
+    import_view = _build_import_view()
+
     return dbc.Modal([
         dbc.ModalHeader([
             dbc.Tabs([
                 dbc.Tab(label='Add Trade', tab_id='modal-tab-add'),
                 dbc.Tab(label='Manage Trades', tab_id='modal-tab-manage',
                         id='manage-trades-tab-label'),
+                dbc.Tab(label='Import Screenshot', tab_id='modal-tab-import'),
             ], id='trade-modal-tabs', active_tab='modal-tab-add'),
             html.H5('Close Trade', id='close-mode-title',
                      style={'display': 'none', 'color': '#00d4ff',
@@ -638,9 +641,92 @@ def _build_trade_modal():
             html.Div(id='modal-add-view', children=add_form),
             html.Div(id='modal-manage-view', children=manage_view,
                      style={'display': 'none'}),
+            html.Div(id='modal-import-view', children=import_view,
+                     style={'display': 'none'}),
         ]),
     ], id='trade-modal', is_open=False, size='lg', centered=True,
        className='trade-modal')
+
+
+def _build_import_view():
+    """Screenshot-import view: upload an image, review extracted trades, save."""
+    return html.Div([
+        dcc.Upload(
+            id='screenshot-upload',
+            children=html.Div([
+                html.Span('\U0001F4F7 ', style={'fontSize': '1.2rem', 'opacity': '0.6'}),
+                'Drop a trade screenshot or ',
+                html.A('browse', style={'color': '#00d4ff', 'fontWeight': '600',
+                                        'textDecoration': 'none', 'cursor': 'pointer'}),
+            ], style={'fontFamily': "'DM Sans', sans-serif", 'fontSize': '0.85rem',
+                      'color': '#8b949e'}),
+            style={
+                'width': '100%', 'height': '72px', 'lineHeight': '72px',
+                'borderWidth': '2px', 'borderStyle': 'dashed',
+                'borderRadius': '10px', 'textAlign': 'center',
+                'borderColor': 'rgba(99, 179, 237, 0.15)',
+                'backgroundColor': 'rgba(22, 27, 34, 0.5)',
+                'cursor': 'pointer',
+                'transition': '0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            },
+            className='upload-zone',
+            accept='image/png,image/jpeg',
+            multiple=False,
+        ),
+        dcc.Store(id='screenshot-parsed-store'),
+        html.Div(id='import-feedback', className='mt-2'),
+        dcc.Loading(
+            html.Div(id='import-review-container', className='mt-3'),
+            type='dot', color='#00d4ff',
+        ),
+        dbc.Button('Save Imported Trades', id='save-imported-btn', color='primary',
+                   className='mt-3 w-100', style={'display': 'none',
+                          'background': 'linear-gradient(135deg, #0891b2, #00d4ff)',
+                          'border': 'none', 'fontWeight': '600'}),
+    ])
+
+
+def build_import_review_table(rows):
+    """Build the editable review DataTable from parsed trade rows."""
+    return dash_table.DataTable(
+        id='import-review-table',
+        data=rows,
+        columns=[
+            {'name': 'Date', 'id': 'date', 'editable': True},
+            {'name': 'Activity', 'id': 'activity_type', 'presentation': 'dropdown', 'editable': True},
+            {'name': 'Symbol', 'id': 'symbol', 'editable': True},
+            {'name': 'Type', 'id': 'opt_type', 'presentation': 'dropdown', 'editable': True},
+            {'name': 'Expiration', 'id': 'expiration', 'editable': True},
+            {'name': 'Strike', 'id': 'strike', 'type': 'numeric', 'editable': True},
+            {'name': 'Qty', 'id': 'quantity', 'type': 'numeric', 'editable': True},
+            {'name': 'Price', 'id': 'price', 'type': 'numeric', 'editable': True},
+            {'name': 'Amount', 'id': 'amount', 'type': 'numeric', 'editable': True},
+            {'name': 'Comm', 'id': 'commission', 'type': 'numeric', 'editable': True},
+            {'name': 'Instrument', 'id': 'instrument_type', 'presentation': 'dropdown', 'editable': True},
+        ],
+        dropdown={
+            'activity_type': {'options': [
+                {'label': v, 'value': v} for v in
+                ['Sold Short', 'Bought To Open', 'Bought To Cover',
+                 'Sold To Close', 'Option Expired', 'Option Assigned']]},
+            'opt_type': {'options': [{'label': 'CALL', 'value': 'CALL'},
+                                     {'label': 'PUT', 'value': 'PUT'}]},
+            'instrument_type': {'options': [
+                {'label': 'Option', 'value': 'option'},
+                {'label': 'Future', 'value': 'future'},
+                {'label': 'Futures Option', 'value': 'futures_option'}]},
+        },
+        editable=True,
+        row_deletable=True,
+        row_selectable='multi',
+        selected_rows=list(range(len(rows))),
+        style_table={'overflowX': 'auto'},
+        style_cell={'fontFamily': "'IBM Plex Mono', monospace", 'fontSize': '0.78rem',
+                    'backgroundColor': 'transparent', 'color': '#e6edf3',
+                    'border': '1px solid rgba(99, 179, 237, 0.1)', 'padding': '6px'},
+        style_header={'backgroundColor': 'rgba(22, 27, 34, 0.8)', 'color': '#8b949e',
+                      'fontWeight': '600', 'border': '1px solid rgba(99, 179, 237, 0.1)'},
+    )
 
 
 def build_layout():

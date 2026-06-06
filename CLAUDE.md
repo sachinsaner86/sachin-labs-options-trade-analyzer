@@ -169,6 +169,16 @@ Open manual positions show a **CLOSE** button in the Positions table (before the
 
 **After DB changes via script**: `trades-store` in browser localStorage caches old data. Click **Clear** in the header to flush and force a re-read from SQLite.
 
+### Screenshot trade import (Claude vision)
+The Add Trade modal has a third tab, **Import Screenshot** (`modal-tab-import`, `modal-import-view`). `toggle_modal_tab` is a 3-way show/hide. Flow: `dcc.Upload(id='screenshot-upload')` (base64 data-URL) → `parse_screenshot` callback splits the `data:<media_type>;base64,<data>` prefix and calls `vision/client.py:parse_trade_screenshot(image_b64, media_type)` → renders an editable `dash_table.DataTable(id='import-review-table')` (built by `layout.py:build_import_review_table`) into `import-review-container` and stores rows in `screenshot-parsed-store` → `save-imported-btn` fires `save_imported_trades`, which validates each row, calls `core/db.py:add_trade()`, and bumps `manual-trades-refresh` (same rebuild path as the manual form). No downstream pipeline changes.
+
+- **`vision/client.py`**: single `messages.create(model='claude-opus-4-8', ...)` with an `image` content block + `output_config={'format': {'type':'json_schema','schema':TRADE_SCHEMA}}`. Non-fatal: every failure (incl. empty `ANTHROPIC_API_KEY`) returns `{'trades': [], 'error': str}` — never raises. The prompt maps activity strings, `put/call`→`PUT/CALL`, `Jul-17-26`→`07/17/26`, infers the contract multiplier (NQ=20, ES=50, …) for `amount`, and tags index/commodity option rows as `futures_option`.
+- **Structured-output schema gotcha (don't revert)**: a nullable field cannot carry both an array `type` and an `enum`. `opt_type` must use `{'anyOf': [{'type':'string','enum':['CALL','PUT']}, {'type':'null'}]}` — `{'type':['string','null'],'enum':[...,None]}` returns a 400 (`Enum value 'CALL' does not match declared type`). Other nullable fields (`expiration`, `strike`) have no enum, so `['string','null']` is fine. Every object needs `additionalProperties: false` and all keys in `required`.
+- **Date handling**: Claude returns `date` as `MM/DD/YY`; `save_imported_trades` converts it to a `datetime` via `_parse_import_date` before `add_trade` (because `core/db.py:_row_to_dict` deserializes with `datetime.fromisoformat`). `expiration` stays the `MM/DD/YY` string (matches the CSV contract and the Analyzer's `%m/%d/%y` parse).
+- **Amount sign** is re-enforced in `save_imported_trades` by `activity_type` (same rule as `save_trade`), so Claude's inferred sign only needs to be approximately right.
+- **Config**: `ANTHROPIC_API_KEY` is read in `config.py` from `.env` (gitignored). The `anthropic` SDK is imported lazily inside `parse_trade_screenshot`, so the app still imports without it installed.
+- **CSS**: inline DataTable dropdowns need `#import-review-table .dash-dropdown-*` rules in `assets/custom.css` (same pattern as `#analyzer-legs-table`).
+
 ### P&L Analyzer tab (Tab 5)
 `analyzer-store` holds the position dict written by `on_analyze_click` when user clicks the "Analyze" cell on an Open position in the Positions table. The Analyze column uses plain text (no markdown) — `active_cell` fires on click, no browser navigation.
 

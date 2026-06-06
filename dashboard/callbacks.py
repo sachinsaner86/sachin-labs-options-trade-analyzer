@@ -52,6 +52,19 @@ def _merge_manual_trades(base_trades, start_date=None, end_date=None):
     return base_trades + manual
 
 
+def _parse_import_date(value):
+    """Parse a trade date from screenshot import. Accepts MM/DD/YY or ISO; returns datetime."""
+    if isinstance(value, datetime):
+        return value
+    s = str(value).strip()
+    for fmt in ('%m/%d/%y', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return datetime.fromisoformat(s)
+
+
 def _build_and_serialize_positions(trades, split_map=None, get_key=None):
     """Build positions from trades and serialize for trades-store.
 
@@ -223,12 +236,17 @@ def register_callbacks(app):
     @app.callback(
         Output('modal-add-view', 'style'),
         Output('modal-manage-view', 'style'),
+        Output('modal-import-view', 'style'),
         Input('trade-modal-tabs', 'active_tab'),
     )
     def toggle_modal_tab(active_tab):
+        hide = {'display': 'none'}
+        show = {'display': 'block'}
         if active_tab == 'modal-tab-manage':
-            return {'display': 'none'}, {'display': 'block'}
-        return {'display': 'block'}, {'display': 'none'}
+            return hide, show, hide
+        if active_tab == 'modal-tab-import':
+            return hide, hide, show
+        return show, hide, hide
 
     # ── Trade Modal: Instrument Toggle ──
     @app.callback(
@@ -557,6 +575,147 @@ def register_callbacks(app):
             'positions': positions_data,
             'filename': filename,
         }
+
+    # ── Trade Modal: Parse uploaded screenshot ──
+    @app.callback(
+        Output('import-review-container', 'children'),
+        Output('screenshot-parsed-store', 'data'),
+        Output('import-feedback', 'children'),
+        Output('save-imported-btn', 'style'),
+        Input('screenshot-upload', 'contents'),
+        State('save-imported-btn', 'style'),
+        prevent_initial_call=True,
+    )
+    def parse_screenshot(contents, btn_style):
+        if not contents:
+            return no_update, no_update, no_update, no_update
+
+        from dashboard.layout import build_import_review_table
+        from vision.client import parse_trade_screenshot
+
+        base_style = {k: v for k, v in (btn_style or {}).items() if k != 'display'}
+        hidden = {**base_style, 'display': 'none'}
+        visible = {**base_style, 'display': 'block'}
+
+        try:
+            header, b64 = contents.split(',', 1)
+            media_type = header.split(':', 1)[1].split(';', 1)[0]  # e.g. 'image/png'
+        except (ValueError, IndexError):
+            return None, None, html.Div('Could not read the uploaded image.',
+                                        className='trade-toast-error'), hidden
+
+        result = parse_trade_screenshot(b64, media_type)
+        if result['error']:
+            return None, None, html.Div(f"Parse error: {result['error']}",
+                                        className='trade-toast-error'), hidden
+        rows = result['trades']
+        if not rows:
+            return None, None, html.Div('No trades found in the screenshot.',
+                                        className='trade-toast-error'), hidden
+
+        table = build_import_review_table(rows)
+        msg = html.Div(f'Found {len(rows)} trade(s) — review, edit, then save.',
+                       className='trade-toast-success')
+        return table, rows, msg, visible
+
+    # ── Trade Modal: Save imported (reviewed) trades ──
+    @app.callback(
+        Output('import-feedback', 'children', allow_duplicate=True),
+        Output('manual-trades-refresh', 'data', allow_duplicate=True),
+        Output('import-review-container', 'children', allow_duplicate=True),
+        Output('screenshot-parsed-store', 'data', allow_duplicate=True),
+        Output('save-imported-btn', 'style', allow_duplicate=True),
+        Input('save-imported-btn', 'n_clicks'),
+        State('import-review-table', 'data'),
+        State('import-review-table', 'derived_virtual_selected_rows'),
+        State('manual-trades-refresh', 'data'),
+        State('save-imported-btn', 'style'),
+        prevent_initial_call=True,
+    )
+    def save_imported_trades(n_clicks, table_data, selected_rows, refresh_counter, btn_style):
+        if not n_clicks or not table_data:
+            return no_update, no_update, no_update, no_update, no_update
+
+        from core.db import add_trade
+
+        # derived_virtual_selected_rows indexes into the (filtered) table rows.
+        # If nothing is explicitly selected, save every row.
+        if selected_rows:
+            chosen = [table_data[i] for i in selected_rows if i < len(table_data)]
+        else:
+            chosen = table_data
+
+        saved = 0
+        errors = []
+        for idx, row in enumerate(chosen, 1):
+            instrument = row.get('instrument_type') or 'option'
+            has_option_fields = instrument in ('option', 'futures_option')
+            activity_type = row.get('activity_type')
+
+            missing = []
+            if not row.get('date'):
+                missing.append('date')
+            if not activity_type:
+                missing.append('activity')
+            if not row.get('symbol'):
+                missing.append('symbol')
+            qty = row.get('quantity')
+            if not qty or int(qty) <= 0:
+                missing.append('qty')
+            if row.get('price') in (None, ''):
+                missing.append('price')
+            if row.get('amount') in (None, ''):
+                missing.append('amount')
+            if has_option_fields:
+                if not row.get('opt_type'):
+                    missing.append('type')
+                if not row.get('strike'):
+                    missing.append('strike')
+                if not row.get('expiration'):
+                    missing.append('expiration')
+            if missing:
+                errors.append(f"row {idx}: missing {', '.join(missing)}")
+                continue
+
+            try:
+                # Enforce sign by activity_type (same rule as save_trade).
+                signed_amount = float(row['amount'])
+                if activity_type in ('Sold Short', 'Sold To Close'):
+                    signed_amount = abs(signed_amount)
+                elif activity_type in ('Bought To Cover', 'Bought To Open'):
+                    signed_amount = -abs(signed_amount)
+
+                trade_dict = {
+                    'date': _parse_import_date(row['date']),
+                    'activity_type': activity_type,
+                    'symbol': str(row['symbol']).upper().strip(),
+                    'opt_type': row.get('opt_type') if has_option_fields else None,
+                    'expiration': row.get('expiration') if has_option_fields else None,
+                    'strike': float(row['strike']) if has_option_fields and row.get('strike') else None,
+                    'quantity': int(qty),
+                    'price': float(row['price']),
+                    'amount': signed_amount,
+                    'commission': float(row.get('commission') or 0),
+                    'instrument_type': instrument,
+                }
+                add_trade(trade_dict)
+                saved += 1
+            except Exception as e:
+                errors.append(f"row {idx}: {e}")
+
+        base_style = {k: v for k, v in (btn_style or {}).items() if k != 'display'}
+        if saved == 0:
+            feedback = html.Div('Nothing saved. ' + '; '.join(errors),
+                                className='trade-toast-error')
+            return feedback, no_update, no_update, no_update, no_update
+
+        text = f'Saved {saved} trade(s).'
+        if errors:
+            text += ' Skipped — ' + '; '.join(errors)
+        feedback = html.Div(text, className='trade-toast-success')
+        # Clear the review table + store, bump refresh to rebuild positions.
+        return (feedback, (refresh_counter or 0) + 1, None, None,
+                {**base_style, 'display': 'none'})
 
     # ── Trade Modal: Populate Manage List ──
     @app.callback(

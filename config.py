@@ -18,3 +18,6 @@ DB_PATH = os.getenv('DB_PATH', _default_db)
 # E-Trade API
 ETRADE_BASE_URL = 'https://api.etrade.com'
 ETRADE_AUTH_URL = 'https://us.etrade.com'
+
+# Anthropic (screenshot trade import via Claude vision)
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')

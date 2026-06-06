@@ -714,6 +714,39 @@ label, .form-label {
     color: var(--cyan) !important;
 }
 
+/* ── Screenshot Import: Review Table ── */
+#import-review-table .dash-spreadsheet-inner input {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-card) !important;
+    font-family: var(--font-data) !important;
+}
+#import-review-table .dash-dropdown {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+}
+#import-review-table .dash-dropdown-value-item {
+    color: var(--text-primary) !important;
+    font-weight: 500 !important;
+}
+#import-review-table .dash-dropdown-placeholder {
+    color: var(--text-muted) !important;
+}
+#import-review-table .dash-dropdown-content {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border-card) !important;
+}
+#import-review-table .dash-dropdown-option {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-card) !important;
+}
+#import-review-table .dash-dropdown-option--focused,
+#import-review-table .dash-dropdown-option--selected {
+    background-color: var(--cyan-bg) !important;
+    color: var(--cyan) !important;
+}
+
 /* ── Rolls Tab ── */
 .roll-chain-card {
     border-left: 3px solid var(--cyan) !important;
