@@ -150,10 +150,20 @@ Dash 4.0.0 completely rewrote Dropdown and DatePickerRange — they no longer us
 - `dbc.Table` (v2.0.4+) does not accept `dark=True` — use `style=` instead
 - `html.Style` does not exist — inject CSS via `assets/` only
 
-### Data persistence and Clear button
-`trades-store` uses `storage_type='local'` (browser localStorage) so CSV/API data survives page refreshes. `session-store` also uses `'local'` for auth token persistence. Both are cleared if the user clears browser storage.
+### Transaction archive (source of truth)
+API + CSV transactions persist to the `transactions` SQLite table (`core/db.py`), deduped by `dedup_key` (E-Trade `transactionId` for API, content hash for CSV/manual) via `INSERT OR IGNORE`. The dashboard builds positions from the full archive merged with manual trades through `_load_archive_positions()` in `callbacks.py` — the single source-of-truth read path used by page load, CSV upload, API fetch, manual-change rebuild, and the date-range picker. `trades-store` (localStorage) is now a projection/cache, **not** the source.
 
-The **Clear button** (header, next to Refresh) resets `trades-store` → `{}`, `fetch-log-store` → `{'status': 'idle'}`, and `analyzer-store` → `None`. It does **not** touch `session-store` or `auth-state-store`, so the E-Trade auth token survives a clear.
+Key details:
+- **MISC split-marker rows** are archived (`parse_csv_rows_raw` keeps them) and `get_archived_transactions` returns them regardless of date, so `normalize_trades` can rebuild the contract-key remap over the whole archive on every read.
+- **`compute_dedup_key`** canonicalizes numeric fields (strike 4dp, price/amount/commission 2dp) so float/format jitter never splits one trade into two keys. The `api:` / `csv:` prefix keeps the two sources' keys disjoint.
+- **End date** is normalized to end-of-day in `_load_archive_positions` so the range is inclusive.
+- **Purge is script-only**: `delete_all_transactions()` / `delete_transactions_in_range(start, end)` in `core/db.py`. No dashboard button.
+- **Stock-ready**: the `transactions` table has `instrument_type` and nullable opt fields, so stock rows store correctly. Stock *position/P&L logic* is a separate future feature (`build_positions` does not yet recognize stock activity types).
+
+### Data persistence and Clear button
+`trades-store` uses `storage_type='local'` (browser localStorage) as a render cache; the authoritative store is now the SQLite archive (above) plus `manual_trades`. `session-store` also uses `'local'` for auth token persistence.
+
+The **Clear button** (header, next to Refresh) resets `trades-store` → `{}`, `fetch-log-store` → `{'status': 'idle'}`, and `analyzer-store` → `None`. Because the archive is the source of truth, clearing the store now triggers `load_manual_on_start` to **repopulate from SQLite** — it is a reload, not a delete. It does **not** touch `session-store` or `auth-state-store`, so the E-Trade auth token survives a clear.
 
 ### Manual trade entry
 The "+" Add Trade button in the header opens a modal with Add/Manage tabs. Trades are persisted in SQLite at `~/.sachin-labs-analyzer/trades.db` (`core/db.py`). Three instrument types: **Option** (equity options, auto-calc amount = qty×price×100), **Future** (hides opt_type/expiration, shows "Entry Price"), **Futures Option** (shows all option fields, manual amount entry). Manual trades merge into the position pipeline via `_merge_manual_trades()` in `callbacks.py`, filtered by the date range picker. The callback chain: `save_trade` → `manual-trades-refresh` store → `rebuild_after_manual_change` → `trades-store`. Manual trades carry `source='manual'` to distinguish from CSV/API trades during rebuild. The form resets (including instrument toggle) after each save.
