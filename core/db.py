@@ -1,5 +1,6 @@
 """SQLite manager for manual trades."""
 
+import hashlib
 import sqlite3
 import uuid
 from datetime import datetime
@@ -53,6 +54,25 @@ def _ensure_schema(conn):
             PRIMARY KEY (chain_key, position_id_from, position_id_to)
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+            dedup_key       TEXT PRIMARY KEY,
+            source          TEXT NOT NULL,
+            date            TEXT NOT NULL,
+            activity_type   TEXT NOT NULL,
+            symbol          TEXT NOT NULL,
+            opt_type        TEXT,
+            expiration      TEXT,
+            strike          REAL,
+            quantity        INTEGER NOT NULL,
+            price           REAL NOT NULL,
+            amount          REAL NOT NULL,
+            commission      REAL NOT NULL DEFAULT 0,
+            instrument_type TEXT NOT NULL DEFAULT 'option',
+            imported_at     TEXT NOT NULL
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(date)')
     conn.commit()
 
 
@@ -209,6 +229,126 @@ def remove_broken_chain(chain_key):
     conn = _get_conn()
     try:
         conn.execute('DELETE FROM broken_chains WHERE chain_key = ?', (chain_key,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ── Transaction archive (API + CSV source of truth) ──
+
+def _canon_num(value, places):
+    """Canonical fixed-precision string, or empty token for None/blank."""
+    if value is None or value == '':
+        return ''
+    return f'{float(value):.{places}f}'
+
+
+def compute_dedup_key(trade, source):
+    """Stable primary key for an archived transaction.
+
+    API rows use E-Trade's transactionId. Everything else uses a content hash
+    over identifying fields, canonicalized so float/format jitter is stable.
+    """
+    if source == 'api' and trade.get('txn_id') not in (None, ''):
+        return f"api:{trade['txn_id']}"
+
+    d = trade['date']
+    date_s = d.strftime('%Y-%m-%d') if isinstance(d, datetime) else str(d)[:10]
+    parts = [
+        date_s,
+        str(trade.get('activity_type', '')),
+        str(trade.get('symbol', '')),
+        str(trade.get('opt_type') or ''),
+        str(trade.get('expiration') or ''),
+        _canon_num(trade.get('strike'), 4),
+        str(int(trade.get('quantity', 0))),
+        _canon_num(trade.get('price'), 2),
+        _canon_num(trade.get('amount'), 2),
+        _canon_num(trade.get('commission', 0), 2),
+    ]
+    digest = hashlib.sha1('|'.join(parts).encode('utf-8')).hexdigest()
+    return f'csv:{digest}'
+
+
+def add_transactions(trades, source):
+    """Insert archive rows with INSERT OR IGNORE dedup on dedup_key.
+
+    Returns (inserted_count, skipped_count).
+    """
+    if not trades:
+        return (0, 0)
+    now = datetime.now().isoformat()
+    rows = []
+    for t in trades:
+        key = compute_dedup_key(t, source)
+        d = t['date']
+        date_s = d.isoformat() if isinstance(d, datetime) else str(d)
+        rows.append((
+            key, source, date_s, t['activity_type'], t['symbol'],
+            t.get('opt_type'), t.get('expiration'), t.get('strike'),
+            int(t.get('quantity', 0)), t.get('price', 0.0), t.get('amount', 0.0),
+            t.get('commission', 0) or 0, t.get('instrument_type', 'option'), now,
+        ))
+    conn = _get_conn()
+    try:
+        before = conn.total_changes
+        conn.executemany('''
+            INSERT OR IGNORE INTO transactions
+                (dedup_key, source, date, activity_type, symbol, opt_type,
+                 expiration, strike, quantity, price, amount, commission,
+                 instrument_type, imported_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+        conn.commit()
+        inserted = conn.total_changes - before
+        return (inserted, len(rows) - inserted)
+    finally:
+        conn.close()
+
+
+def get_archived_transactions(start, end):
+    """Return archive rows as normalized trade dicts.
+
+    Real trades are filtered to [start, end]; MISC split-marker rows are
+    returned regardless of date (needed for contract-key remap).
+    """
+    start_s = start.isoformat() if isinstance(start, datetime) else str(start)
+    end_s = end.isoformat() if isinstance(end, datetime) else str(end)
+    conn = _get_conn()
+    try:
+        rows = conn.execute('''
+            SELECT * FROM transactions
+            WHERE activity_type = 'MISC' OR (date >= ? AND date <= ?)
+            ORDER BY date ASC
+        ''', (start_s, end_s)).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d['date'] = datetime.fromisoformat(d['date'])
+        out.append(d)
+    return out
+
+
+def delete_all_transactions():
+    """Remove every archived transaction (script-only purge)."""
+    conn = _get_conn()
+    try:
+        conn.execute('DELETE FROM transactions')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_transactions_in_range(start, end):
+    """Remove archived transactions whose date falls in [start, end]."""
+    start_s = start.isoformat() if isinstance(start, datetime) else str(start)
+    end_s = end.isoformat() if isinstance(end, datetime) else str(end)
+    conn = _get_conn()
+    try:
+        conn.execute('DELETE FROM transactions WHERE date >= ? AND date <= ?',
+                     (start_s, end_s))
         conn.commit()
     finally:
         conn.close()
