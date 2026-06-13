@@ -199,17 +199,19 @@ def register_callbacks(app):
     def on_csv_upload(contents, filename, start_date, end_date):
         if not contents:
             return no_update, no_update, no_update
+        from core.db import add_transactions
+        from core.parser import parse_csv_rows_raw
         content_type, content_string = contents.split(',')
         decoded = base64.b64decode(content_string).decode('utf-8')
-        real_trades, split_map, get_key = parse_csv_content(decoded)
-        combined = _merge_manual_trades(real_trades, start_date, end_date)
-        positions_data = _build_and_serialize_positions(combined, split_map, get_key)
 
-        return {
-            'trades': _serialize_trades(combined),
-            'positions': positions_data,
-            'filename': filename,
-        }, None, {'status': 'idle'}
+        # Archive ALL parsed rows (incl. MISC) with dedup, then build from archive
+        all_parsed = parse_csv_rows_raw(decoded)
+        add_transactions(all_parsed, 'csv')
+
+        payload = _load_archive_positions(start_date, end_date, filename=filename)
+        if payload is None:
+            return no_update, 'No trades found in range.', {'status': 'idle'}
+        return payload, None, {'status': 'idle'}
 
     # ── Clear all trade data ──
     @app.callback(
@@ -222,6 +224,8 @@ def register_callbacks(app):
     def on_clear_click(n_clicks):
         if not n_clicks:
             return no_update, no_update, no_update
+        # Archive is the source of truth; clearing the store triggers
+        # load_manual_on_start to repopulate from SQLite (a reload, not a delete).
         return {}, {'status': 'idle'}, None
 
     # ── Load manual trades on page load (if no CSV/API data) ──
@@ -234,21 +238,25 @@ def register_callbacks(app):
         prevent_initial_call='initial_duplicate',
     )
     def load_manual_on_start(ts, current_data, start_date, end_date):
-        """On page load, if trades-store is empty, load manual trades from SQLite."""
+        """On page load, if trades-store is empty, load the archive + manual trades."""
         if current_data and current_data.get('trades'):
             return no_update
+        payload = _load_archive_positions(start_date, end_date)
+        return payload if payload else no_update
 
-        manual = _merge_manual_trades([], start_date, end_date)
-        if not manual:
-            return no_update
-
-        positions_data = _build_and_serialize_positions(manual)
-
-        return {
-            'trades': _serialize_trades(manual),
-            'positions': positions_data,
-            'filename': 'Manual Trades',
-        }
+    # ── Re-window the archive when the date range changes ──
+    @app.callback(
+        Output('trades-store', 'data', allow_duplicate=True),
+        Input('date-range-picker', 'start_date'),
+        Input('date-range-picker', 'end_date'),
+        State('trades-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def requery_archive_on_date_change(start_date, end_date, current_data):
+        """Re-window the archive when the date range changes."""
+        filename = (current_data or {}).get('filename', 'E-Trade Archive')
+        payload = _load_archive_positions(start_date, end_date, filename=filename)
+        return payload if payload else no_update
 
     # ── Trade Modal: Open/Close ──
     @app.callback(
@@ -588,26 +596,10 @@ def register_callbacks(app):
     def rebuild_after_manual_change(refresh_counter, current_data, start_date, end_date):
         if not refresh_counter:
             return no_update
-
-        base_trades = []
-        filename = 'Manual Trades'
-        if current_data and current_data.get('trades'):
-            base_trades = _deserialize_trades(current_data['trades'])
-            # Filter out old manual trades — they'll be re-read from SQLite
-            base_trades = [t for t in base_trades if t.get('source') != 'manual']
-            filename = current_data.get('filename', filename)
-
-        combined = _merge_manual_trades(base_trades, start_date, end_date)
-        if not combined:
-            return no_update
-
-        positions_data = _build_and_serialize_positions(combined)
-
-        return {
-            'trades': _serialize_trades(combined),
-            'positions': positions_data,
-            'filename': filename,
-        }
+        # Archive is the source of truth — re-read it + manual; no localStorage filter.
+        filename = (current_data or {}).get('filename', 'E-Trade Archive')
+        payload = _load_archive_positions(start_date, end_date, filename=filename)
+        return payload if payload else no_update
 
     # ── Trade Modal: Parse uploaded screenshot ──
     @app.callback(
@@ -1104,9 +1096,13 @@ def register_callbacks(app):
                                           'fetch_time': datetime.now().isoformat()}})
                 return no_update, None
 
-            real_trades, split_map, get_key = normalize_trades(trades)
-            combined = _merge_manual_trades(real_trades, start_date, end_date)
-            positions_data = _build_and_serialize_positions(combined, split_map, get_key)
+            from core.db import add_transactions
+            archived_new, archived_skipped = add_transactions(trades, 'api')
+
+            payload = _load_archive_positions(start_date, end_date,
+                                              filename='E-Trade Archive')
+            real_trades, _, _ = normalize_trades(trades)
+            positions_data = payload['positions'] if payload else []
 
             recognized = {'Sold Short', 'Bought To Open', 'Bought To Cover',
                           'Sold To Close', 'Option Expired', 'Option Assigned'}
@@ -1117,6 +1113,8 @@ def register_callbacks(app):
                 'total_raw_txns': len(all_txns),
                 'total_option_trades': len(real_trades),
                 'total_positions': len(positions_data),
+                'archived_new': archived_new,
+                'archived_skipped': archived_skipped,
                 'skipped_activity_types': skipped,
                 'fetch_time': datetime.now().isoformat(),
                 'error': None,
@@ -1124,11 +1122,7 @@ def register_callbacks(app):
             set_progress({'status': 'done', 'chunks_done': len(chunks),
                           'chunks_total': len(chunks), 'log': log, 'summary': summary})
 
-            return {
-                'trades': _serialize_trades(combined),
-                'positions': positions_data,
-                'filename': 'E-Trade API',
-            }, None
+            return payload if payload else no_update, None
 
         except Exception as e:
             set_progress({'status': 'error', 'chunks_done': len(log),
