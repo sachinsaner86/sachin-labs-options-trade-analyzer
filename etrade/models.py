@@ -84,6 +84,7 @@ def normalize_transactions(api_transactions):
             activity_type = 'Option Assigned'
 
         trades.append({
+            'txn_id': txn.get('transactionId'),
             'date': trade_date,
             'date_str': trade_date.strftime('%m/%d/%Y'),
             'activity_type': activity_type,

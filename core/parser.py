@@ -121,3 +121,14 @@ def parse_csv_content(content_string):
     rows = list(reader)
     trades = _parse_rows(rows)
     return normalize_trades(trades)
+
+
+def parse_csv_rows_raw(content_string):
+    """Parse E-Trade CSV from a string, returning ALL parsed rows including MISC.
+
+    Unlike parse_csv_content (which strips MISC), this preserves split-marker
+    rows so they can be archived for later contract-key remapping.
+    """
+    reader = csv.reader(io.StringIO(content_string))
+    rows = list(reader)
+    return _parse_rows(rows)

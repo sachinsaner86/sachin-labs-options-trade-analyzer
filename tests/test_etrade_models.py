@@ -140,6 +140,25 @@ def test_build_positions_from_api_trades():
     assert abs(pos['total_pnl'] - 347.49) < 0.01, f"Expected ~347.49, got {pos['total_pnl']}"
 
 
+def test_normalize_transactions_carries_txn_id():
+    api = [{
+        'transactionId': 555444,
+        'transactionType': 'Sold Short',
+        'transactionDate': 1742000000000,
+        'amount': 1750.0,
+        'description': 'PUT AAPL 04/17/26 200 OPENING',
+        'brokerage': {
+            'quantity': -5, 'price': 3.5, 'fee': 3.25,
+            'product': {'securityType': 'OPTN', 'symbol': 'AAPL',
+                        'callPut': 'PUT', 'strikePrice': 200,
+                        'expiryYear': 26, 'expiryMonth': 4, 'expiryDay': 17},
+        },
+    }]
+    trades = normalize_transactions(api)
+    assert len(trades) == 1
+    assert trades[0]['txn_id'] == 555444
+
+
 if __name__ == '__main__':
     tests = [
         test_normalize_transactions_filters_options_only,
@@ -147,6 +166,7 @@ if __name__ == '__main__':
         test_normalize_transactions_expiration,
         test_normalize_transactions_fields,
         test_build_positions_from_api_trades,
+        test_normalize_transactions_carries_txn_id,
     ]
     passed = 0
     failed = 0
