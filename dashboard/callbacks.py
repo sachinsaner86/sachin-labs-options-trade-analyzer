@@ -52,6 +52,39 @@ def _merge_manual_trades(base_trades, start_date=None, end_date=None):
     return base_trades + manual
 
 
+def _load_archive_positions(start_date, end_date, filename='E-Trade Archive'):
+    """Single source-of-truth read path: build positions from the full archive
+    merged with manual trades, filtered by date range.
+
+    Returns the trades-store payload, or None if the archive + manual are empty.
+    """
+    from datetime import datetime as dt, time as _time
+    from core.db import get_archived_transactions
+
+    def _to_start(v):
+        if not v:
+            return dt(1970, 1, 1)
+        return dt.fromisoformat(v) if isinstance(v, str) else v
+
+    def _to_end(v):
+        if not v:
+            return dt(2999, 1, 1)
+        d = dt.fromisoformat(v) if isinstance(v, str) else v
+        return dt.combine(d.date(), _time(23, 59, 59))
+
+    raw = get_archived_transactions(_to_start(start_date), _to_end(end_date))
+    real_trades, split_map, get_key = normalize_trades(raw)
+    combined = _merge_manual_trades(real_trades, start_date, end_date)
+    if not combined:
+        return None
+    positions_data = _build_and_serialize_positions(combined, split_map, get_key)
+    return {
+        'trades': _serialize_trades(combined),
+        'positions': positions_data,
+        'filename': filename,
+    }
+
+
 def _parse_import_date(value):
     """Parse a trade date from screenshot import. Accepts MM/DD/YY or ISO; returns datetime."""
     if isinstance(value, datetime):
