@@ -600,6 +600,16 @@ def _build_trade_modal():
     ])
 
     manage_view = html.Div([
+        dbc.RadioItems(
+            id='manage-source-toggle',
+            options=[
+                {'label': ' Manual trades', 'value': 'manual'},
+                {'label': ' Archived transactions (API/CSV)', 'value': 'archived'},
+            ],
+            value='manual',
+            inline=True,
+            className='mb-3',
+        ),
         dbc.Row([
             dbc.Col(
                 dbc.Input(id='manage-search', type='text',
@@ -616,6 +626,7 @@ def _build_trade_modal():
             ),
         ], className='mb-3'),
         dcc.Store(id='pending-delete-store', data=None),
+        dcc.Store(id='pending-delete-archived-store', data=None),
         html.Div(id='manage-trades-list'),
         html.Div(id='manage-trades-summary', className='mt-3'),
     ])

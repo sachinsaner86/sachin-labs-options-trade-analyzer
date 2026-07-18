@@ -15,7 +15,12 @@ from core.rolls import detect_rolls
 from core.monthly import build_monthly_data
 from dashboard.components import kpi_card, format_currency, KPI_ICONS
 from dashboard.charts import monthly_income_chart, pnl_by_symbol_chart, pl_heatmap_chart, greeks_chart
-from core.db import get_all_trades as get_manual_trades, get_broken_pairs
+from core.db import (
+    get_all_trades as get_manual_trades,
+    get_broken_pairs,
+    get_all_archived_transactions,
+    delete_transaction_by_key,
+)
 
 
 def _serialize_trades(real_trades):
@@ -26,6 +31,75 @@ def _serialize_trades(real_trades):
         d['date'] = t['date'].isoformat()
         out.append(d)
     return out
+
+
+def _render_archived_list(search, type_filter, pending_delete):
+    """Rows + summary for the Manage tab's archived-transactions (API/CSV) view.
+
+    MISC split-marker rows are excluded — they're internal bookkeeping for
+    contract-key remaps, not user-facing trades, so they aren't deletable here.
+    """
+    trades = [t for t in get_all_archived_transactions() if t.get('activity_type') != 'MISC']
+
+    if search:
+        search_upper = search.upper().strip()
+        trades = [t for t in trades if search_upper in t['symbol'].upper()]
+    if type_filter and type_filter != 'all':
+        trades = [t for t in trades if t.get('instrument_type', 'option') == type_filter]
+
+    if not trades:
+        return html.Div('No archived transactions match this filter.',
+                         className='text-secondary p-3'), ''
+
+    rows = []
+    for t in trades:
+        key = t['dedup_key']
+        inst = t.get('instrument_type', 'option')
+        badge_cls = 'instrument-badge instrument-badge--opt' if inst == 'option' else 'instrument-badge instrument-badge--fut'
+        badge_text = 'OPT' if inst == 'option' else 'FUT'
+
+        details = (f"{t.get('opt_type') or ''} {t.get('strike') or ''} {t.get('expiration') or ''} "
+                   f"· qty {t['quantity']} · fee ${t.get('commission', 0):.2f} "
+                   f"· src:{t.get('source', '?')}")
+        amount_color = '#00ff88' if t['amount'] >= 0 else '#ff6b6b'
+        date_str = t['date'].strftime('%m/%d/%y %H:%M') if hasattr(t['date'], 'strftime') else str(t['date'])
+
+        if pending_delete == key:
+            actions = html.Div([
+                html.Span('Delete this transaction?', style={'color': '#ff6b6b'}),
+                dbc.Button('Yes', id={'type': 'confirm-delete-archived-btn', 'index': key},
+                           size='sm', color='danger', className='ms-2'),
+                dbc.Button('No', id={'type': 'cancel-delete-archived-btn', 'index': key},
+                           size='sm', outline=True, color='secondary', className='ms-1'),
+            ], className='delete-confirm')
+        else:
+            actions = html.Div([
+                dbc.Button('Delete', id={'type': 'delete-archived-btn', 'index': key},
+                           size='sm', outline=True, color='danger'),
+            ], className='trade-actions')
+
+        row = html.Div([
+            html.Div([
+                html.Span(badge_text, className=badge_cls),
+                html.Div([
+                    html.Span(t['symbol'], style={'fontWeight': '600', 'color': '#e6edf3',
+                                                   'fontFamily': 'IBM Plex Mono'}),
+                    html.Span(f" · {t['activity_type']} · {details} · {date_str}",
+                              className='trade-details'),
+                ]),
+            ], className='trade-info'),
+            html.Span(f"${t['amount']:,.2f}",
+                      className='trade-amount',
+                      style={'color': amount_color}),
+            actions,
+        ], className='manual-trade-row')
+        rows.append(row)
+
+    summary = html.Div([
+        html.Span(f"Total: {len(trades)} archived transaction(s)"),
+    ], className='manage-summary')
+
+    return rows, summary
 
 
 def _deserialize_trades(json_trades):
@@ -96,6 +170,56 @@ def _parse_import_date(value):
         except ValueError:
             continue
     return datetime.fromisoformat(s)
+
+
+def _canon_strike(value):
+    """Comparable numeric strike, or None for blank/non-numeric."""
+    try:
+        return round(float(value), 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _detect_import_closes(rows):
+    """Re-tag parsed screenshot rows that match an existing OPEN position.
+
+    Matches on contract key (symbol, opt_type, expiration, strike). A buy row
+    against an open Short becomes 'Bought To Cover'; a sell row against an open
+    Long becomes 'Sold To Close'. Rows with no matching open position are left
+    untouched. Returns (rows, matched_count). Non-fatal: any failure to build
+    positions degrades to the original rows.
+    """
+    try:
+        payload = _load_archive_positions(None, None)
+    except Exception:
+        return rows, 0
+    if not payload:
+        return rows, 0
+
+    open_dir = {}
+    for p in payload['positions']:
+        if p.get('status') != 'Open':
+            continue
+        sym, ot, exp, strike = p['contract_key']
+        open_dir[(str(sym).upper(), ot, exp, _canon_strike(strike))] = p.get('direction')
+
+    BUYS = {'Bought To Open', 'Bought To Cover'}
+    SELLS = {'Sold Short', 'Sold To Close'}
+    matched = 0
+    for r in rows:
+        if not r.get('symbol'):
+            continue
+        key = (str(r['symbol']).upper(), r.get('opt_type'),
+               r.get('expiration'), _canon_strike(r.get('strike')))
+        direction = open_dir.get(key)
+        act = r.get('activity_type')
+        if direction == 'Short' and act in BUYS:
+            r['activity_type'] = 'Bought To Cover'
+            matched += 1
+        elif direction == 'Long' and act in SELLS:
+            r['activity_type'] = 'Sold To Close'
+            matched += 1
+    return rows, matched
 
 
 def _build_and_serialize_positions(trades, split_map=None, get_key=None):
@@ -638,9 +762,13 @@ def register_callbacks(app):
             return None, None, html.Div('No trades found in the screenshot.',
                                         className='trade-toast-error'), hidden
 
+        rows, matched = _detect_import_closes(rows)
         table = build_import_review_table(rows)
-        msg = html.Div(f'Found {len(rows)} trade(s) — review, edit, then save.',
-                       className='trade-toast-success')
+        text = f'Found {len(rows)} trade(s) — review, edit, then save.'
+        if matched:
+            text += (f' {matched} matched an open position and were marked as '
+                     'closing trades.')
+        msg = html.Div(text, className='trade-toast-success')
         return table, rows, msg, visible
 
     # ── Trade Modal: Save imported (reviewed) trades ──
@@ -661,7 +789,7 @@ def register_callbacks(app):
         if not n_clicks or not table_data:
             return no_update, no_update, no_update, no_update, no_update
 
-        from core.db import add_trade
+        from core.db import add_trade, compute_dedup_key, get_manual_dedup_keys
 
         # derived_virtual_selected_rows indexes into the (filtered) table rows.
         # If nothing is explicitly selected, save every row.
@@ -670,7 +798,10 @@ def register_callbacks(app):
         else:
             chosen = table_data
 
+        # Dedup against existing manual trades and within this batch.
+        seen_keys = get_manual_dedup_keys()
         saved = 0
+        duplicates = 0
         errors = []
         for idx, row in enumerate(chosen, 1):
             instrument = row.get('instrument_type') or 'option'
@@ -723,6 +854,11 @@ def register_callbacks(app):
                     'commission': float(row.get('commission') or 0),
                     'instrument_type': instrument,
                 }
+                dkey = compute_dedup_key(trade_dict, 'manual')
+                if dkey in seen_keys:
+                    duplicates += 1
+                    continue
+                seen_keys.add(dkey)
                 add_trade(trade_dict)
                 saved += 1
             except Exception as e:
@@ -730,11 +866,17 @@ def register_callbacks(app):
 
         base_style = {k: v for k, v in (btn_style or {}).items() if k != 'display'}
         if saved == 0:
-            feedback = html.Div('Nothing saved. ' + '; '.join(errors),
+            reasons = []
+            if duplicates:
+                reasons.append(f'{duplicates} duplicate(s) already saved')
+            reasons.extend(errors)
+            feedback = html.Div('Nothing saved. ' + '; '.join(reasons),
                                 className='trade-toast-error')
             return feedback, no_update, no_update, no_update, no_update
 
         text = f'Saved {saved} trade(s).'
+        if duplicates:
+            text += f' Skipped {duplicates} duplicate(s).'
         if errors:
             text += ' Skipped — ' + '; '.join(errors)
         feedback = html.Div(text, className='trade-toast-success')
@@ -751,9 +893,18 @@ def register_callbacks(app):
         Input('manual-trades-refresh', 'data'),
         Input('manage-search', 'value'),
         Input('manage-type-filter', 'value'),
+        Input('manage-source-toggle', 'value'),
         Input('pending-delete-store', 'data'),
+        Input('pending-delete-archived-store', 'data'),
     )
-    def populate_manage_list(active_tab, refresh, search, type_filter, pending_delete):
+    def populate_manage_list(active_tab, refresh, search, type_filter, source,
+                              pending_delete, pending_delete_archived):
+        tab_label = f"Manage Trades ({len(get_manual_trades())})"
+
+        if source == 'archived':
+            rows, summary = _render_archived_list(search, type_filter, pending_delete_archived)
+            return rows, summary, tab_label
+
         trades = get_manual_trades()
 
         # Apply filters
@@ -765,8 +916,6 @@ def register_callbacks(app):
 
         # Sort by most recent first
         trades.sort(key=lambda t: t['date'], reverse=True)
-
-        tab_label = f"Manage Trades ({len(trades)})"
 
         if not trades:
             return html.Div('No manual trades yet.', className='text-secondary p-3'), '', tab_label
@@ -932,6 +1081,47 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def on_cancel_delete(n_clicks_list):
+        if not any(n_clicks_list):
+            return no_update
+        return None
+
+    # ── Trade Modal: Archived transaction delete button → set pending ──
+    @app.callback(
+        Output('pending-delete-archived-store', 'data'),
+        Input({'type': 'delete-archived-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_delete_archived_click(n_clicks_list):
+        if not any(n_clicks_list):
+            return no_update
+        triggered = ctx.triggered_id
+        if not triggered:
+            return no_update
+        return triggered['index']
+
+    # ── Trade Modal: Confirm archived transaction delete ──
+    @app.callback(
+        Output('manual-trades-refresh', 'data', allow_duplicate=True),
+        Output('pending-delete-archived-store', 'data', allow_duplicate=True),
+        Input({'type': 'confirm-delete-archived-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_confirm_delete_archived(n_clicks_list):
+        if not any(n_clicks_list):
+            return no_update, no_update
+        triggered = ctx.triggered_id
+        if not triggered:
+            return no_update, no_update
+        delete_transaction_by_key(triggered['index'])
+        return datetime.now().timestamp(), None
+
+    # ── Trade Modal: Cancel archived transaction delete ──
+    @app.callback(
+        Output('pending-delete-archived-store', 'data', allow_duplicate=True),
+        Input({'type': 'cancel-delete-archived-btn', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def on_cancel_delete_archived(n_clicks_list):
         if not any(n_clicks_list):
             return no_update
         return None

@@ -157,7 +157,7 @@ Key details:
 - **MISC split-marker rows** are archived (`parse_csv_rows_raw` keeps them) and `get_archived_transactions` returns them regardless of date, so `normalize_trades` can rebuild the contract-key remap over the whole archive on every read.
 - **`compute_dedup_key`** canonicalizes numeric fields (strike 4dp, price/amount/commission 2dp) so float/format jitter never splits one trade into two keys. The `api:` / `csv:` prefix keeps the two sources' keys disjoint.
 - **End date** is normalized to end-of-day in `_load_archive_positions` so the range is inclusive.
-- **Purge is script-only**: `delete_all_transactions()` / `delete_transactions_in_range(start, end)` in `core/db.py`. No dashboard button.
+- **Bulk purge is script-only**: `delete_all_transactions()` / `delete_transactions_in_range(start, end)` in `core/db.py`. No dashboard button. Single-row delete *is* available in the dashboard — see [Manage Trades: archived transaction delete](#manage-trades-archived-transaction-delete).
 - **Stock-ready**: the `transactions` table has `instrument_type` and nullable opt fields, so stock rows store correctly. Stock *position/P&L logic* is a separate future feature (`build_positions` does not yet recognize stock activity types).
 
 ### Data persistence and Clear button
@@ -178,6 +178,13 @@ Open manual positions show a **CLOSE** button in the Positions table (before the
 **Amount sign convention**: `save_trade` enforces sign by activity_type — sells (`Sold Short`, `Sold To Close`) → positive, buys (`Bought To Cover`, `Bought To Open`) → negative. This is required for futures where the user enters a raw number; idempotent for options where auto_calc already signs correctly.
 
 **After DB changes via script**: `trades-store` in browser localStorage caches old data. Click **Clear** in the header to flush and force a re-read from SQLite.
+
+### Manage Trades: archived transaction delete
+The Manage Trades tab has a `dbc.RadioItems` toggle (`manage-source-toggle`, values `manual`/`archived`) above the trade list, so it can render either the manual trades (unchanged) or every archived API/CSV transaction (`get_all_archived_transactions()` — no date window, so old duplicates aren't hidden by the dashboard's date-range picker). Each archived row has a **Delete** button with the same inline Yes/No confirm pattern as manual trades (`pending-delete-archived-store`, `{'type': 'delete-archived-btn'/'confirm-delete-archived-btn'/'cancel-delete-archived-btn', 'index': dedup_key}`), calling `delete_transaction_by_key(dedup_key)` in `core/db.py` and bumping `manual-trades-refresh` to trigger the same `_load_archive_positions` rebuild used elsewhere.
+
+- **No Edit for archived rows (intentional)**: only delete is exposed. Editing risks desyncing a row's `dedup_key` from its content (API keys are `transactionId`-based, not content hashes) with no compensating benefit over delete + re-fetch/re-enter.
+- **MISC split-marker rows are excluded** from this view — they're internal bookkeeping for `normalize_trades`' contract-key remap, not user-facing trades, and deleting one could silently break remapping across a symbol change.
+- **Root cause this UI fixes**: E-Trade's transaction history API can report one fill under two different `transactionId`s (observed: same symbol/strike/expiration/qty/price, ~2 min apart, slightly different commission). Since `compute_dedup_key` for `source='api'` trusts `transactionId`, both rows pass `INSERT OR IGNORE` and silently double the position quantity. There was previously no dashboard way to remove the bad row short of a script — this feature closes that gap.
 
 ### Screenshot trade import (Claude vision)
 The Add Trade modal has a third tab, **Import Screenshot** (`modal-tab-import`, `modal-import-view`). `toggle_modal_tab` is a 3-way show/hide. Flow: `dcc.Upload(id='screenshot-upload')` (base64 data-URL) → `parse_screenshot` callback splits the `data:<media_type>;base64,<data>` prefix and calls `vision/client.py:parse_trade_screenshot(image_b64, media_type)` → renders an editable `dash_table.DataTable(id='import-review-table')` (built by `layout.py:build_import_review_table`) into `import-review-container` and stores rows in `screenshot-parsed-store` → `save-imported-btn` fires `save_imported_trades`, which validates each row, calls `core/db.py:add_trade()`, and bumps `manual-trades-refresh` (same rebuild path as the manual form). No downstream pipeline changes.
@@ -204,6 +211,9 @@ Callback chain:
 **dcc.Graph initial figures**: Always provide `figure={'layout': {'template': 'plotly_dark', 'paper_bgcolor': 'rgba(0,0,0,0)', 'plot_bgcolor': 'rgba(0,0,0,0)'}}` to analyzer graphs so they render dark before Calculate is clicked. Without this they show a white default plotly figure.
 
 **DataTable dropdown CSS**: DataTable inline dropdowns (editable cells with `presentation: 'dropdown'`) need explicit CSS scoped to `#analyzer-legs-table .dash-dropdown-*` — the global `.dash-dropdown-*` rules don't always win inside the table cell context.
+
+# Current Focus
+Last session (2026-07-17): fixed a duplicate-quantity bug where a short MU put position showed 8 contracts instead of 4, caused by E-Trade reporting one fill under two `transactionId`s. Added dashboard-level single-row delete for archived (API/CSV) transactions — previously only manual trades were editable/deletable from the UI; the archive required a script. See [Manage Trades: archived transaction delete](#manage-trades-archived-transaction-delete) and `memory.md` for details. No known follow-up work pending from this.
 
 # Project Rules & Constraints
 - **Git Operations:** NEVER execute `git commit`, `git merge`, or `git push` automatically. You must propose the changes and wait for my explicit "Yes" or "Proceed" for each step.

@@ -270,6 +270,17 @@ def compute_dedup_key(trade, source):
     return f'csv:{digest}'
 
 
+def get_manual_dedup_keys():
+    """Content-hash dedup keys for every existing manual trade.
+
+    Reuses compute_dedup_key's canonicalization so a re-imported screenshot row
+    matching a previously-saved manual/imported trade is detected. Manual trades
+    live in their own table, so this dedups against prior manual trades only —
+    not the CSV/API archive.
+    """
+    return {compute_dedup_key(t, 'manual') for t in get_all_trades()}
+
+
 def add_transactions(trades, source):
     """Insert archive rows with INSERT OR IGNORE dedup on dedup_key.
 
@@ -331,6 +342,26 @@ def get_archived_transactions(start, end):
     return out
 
 
+def get_all_archived_transactions():
+    """Return every archived transaction regardless of date, most recent first.
+
+    Used by the Manage UI to find and delete bad rows (e.g. broker-side
+    duplicate transaction IDs) that get_archived_transactions' date window
+    would otherwise hide.
+    """
+    conn = _get_conn()
+    try:
+        rows = conn.execute('SELECT * FROM transactions ORDER BY date DESC').fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d['date'] = datetime.fromisoformat(d['date'])
+        out.append(d)
+    return out
+
+
 def delete_all_transactions():
     """Remove every archived transaction (script-only purge)."""
     conn = _get_conn()
@@ -350,5 +381,16 @@ def delete_transactions_in_range(start, end):
         conn.execute('DELETE FROM transactions WHERE date >= ? AND date <= ?',
                      (start_s, end_s))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_transaction_by_key(dedup_key):
+    """Remove a single archived transaction by its dedup_key. Returns True if a row was deleted."""
+    conn = _get_conn()
+    try:
+        cursor = conn.execute('DELETE FROM transactions WHERE dedup_key = ?', (dedup_key,))
+        conn.commit()
+        return cursor.rowcount > 0
     finally:
         conn.close()

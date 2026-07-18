@@ -160,6 +160,33 @@ def test_delete_transactions_in_range():
     assert rows[0]['strike'] == 150.0
 
 
+def test_delete_transaction_by_key_removes_only_that_row():
+    from core.db import add_transactions, delete_transaction_by_key, get_archived_transactions
+    a = _opt_txn(txn_id=111)
+    b = _opt_txn(txn_id=222, strike=205.0, amount=1.0)
+    add_transactions([a, b], 'api')
+
+    assert delete_transaction_by_key('api:111') is True
+    rows = get_archived_transactions(datetime(2026, 1, 1), datetime(2026, 12, 31))
+    assert len(rows) == 1
+    assert rows[0]['dedup_key'] == 'api:222'
+
+
+def test_delete_transaction_by_key_missing_key_returns_false():
+    from core.db import delete_transaction_by_key
+    assert delete_transaction_by_key('api:does-not-exist') is False
+
+
+def test_get_all_archived_transactions_ignores_date_window():
+    from core.db import add_transactions, get_all_archived_transactions
+    old = _opt_txn(date=datetime(2020, 1, 1), strike=100.0, amount=1.0)
+    new = _opt_txn(date=datetime(2026, 3, 15))
+    add_transactions([old, new], 'csv')
+    rows = get_all_archived_transactions()
+    assert len(rows) == 2
+    assert rows[0]['date'] >= rows[1]['date']
+
+
 # ── Task 8: parse_csv_rows_raw ──
 
 def test_parse_csv_rows_raw_includes_misc():
