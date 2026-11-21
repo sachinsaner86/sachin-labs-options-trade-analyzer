@@ -67,6 +67,9 @@ If `activity_type` doesn't match, trades are silently ignored and positions will
 - Net cash flow is in top-level `txn.amount`; commission is in `brokerage.fee`
 - `brokerage.quantity` is negative for short sells — use `abs()`
 - **Empty body on pagination** (already fixed, don't revert): E-Trade may return an empty body (no Content) for 90-day chunks with no transactions — check `resp.content` before calling `resp.json()`, treat empty as end-of-results (break). Also detect HTML responses (session expiry) by checking `Content-Type` and first byte before parsing JSON.
+- **Paginate on `marker` only** (don't revert): keep requesting while a `marker` comes back. `moreTransactions` / `next` / `totalCount` are not reliably populated — stopping on them silently drops rows.
+- **Stock (`securityType='EQ'`) transactions are returned but filtered out** in `normalize_transactions`. Stock `transactionType` values: `Bought`, `Sold`, `Dividend`, `Stock Split`, plus `MISC` contract-split adjustments. An assignment is two same-day rows: `OPTN` `Option Assigned` (amount 0) + `EQ` `Bought`/`Sold` at the strike.
+- **Per-lot cost basis**: each position's `lotsDetails` URL (already ends in `.json`) returns `PositionLotsResponse.PositionLot[]`; `price` is E-Trade's adjusted cost/share (assigned puts are reduced by the assigned contract's premium), `termCode` 1 = LONG, 2 = SHORT.
 
 ### Config defaults
 `config.py` loads from `.env` via `python-dotenv`. Defaults when env vars are absent: `HOST=127.0.0.1`, `PORT=8050`, `DEBUG=true`. E-Trade base/auth URLs are hardcoded.
@@ -213,7 +216,13 @@ Callback chain:
 **DataTable dropdown CSS**: DataTable inline dropdowns (editable cells with `presentation: 'dropdown'`) need explicit CSS scoped to `#analyzer-legs-table .dash-dropdown-*` — the global `.dash-dropdown-*` rules don't always win inside the table cell context.
 
 # Current Focus
-Last session (2026-07-17): fixed a duplicate-quantity bug where a short MU put position showed 8 contracts instead of 4, caused by E-Trade reporting one fill under two `transactionId`s. Added dashboard-level single-row delete for archived (API/CSV) transactions — previously only manual trades were editable/deletable from the UI; the archive required a script. See [Manage Trades: archived transaction delete](#manage-trades-archived-transaction-delete) and `memory.md` for details. No known follow-up work pending from this.
+Last session (2026-11-21): investigated stock-transaction support and assignment cost basis using live E-Trade data. No analyzer code changed. Findings are documented under [E-Trade API field quirks](#e-trade-api-field-quirks-already-fixed-dont-revert) and in `memory.md`. The companion `sachin-labs-etrade-mcp` repo got fixes (commit `76f8d56`): top-level `transactionType`, auto-chunked/fully-paginated `get_transactions` with a `symbol` filter, and a new `get_position_lots` tool.
+
+**Candidate next work:**
+- **Stock positions in the analyzer**: normalize `EQ` rows, add stock activity types, lot-matching (FIFO?) position/P&L logic, and pair `Option Assigned` with its stock row. Needs a design/brainstorm pass first.
+- **MCP**: share the analyzer's keyring token as a fallback, register the server with Claude Code (`python setup_claude.py`), and document `get_position_lots` in its README.
+
+Previous (2026-07-17): fixed MU duplicate-quantity bug (one fill under two `transactionId`s) and added single-row archived-transaction delete. See [Manage Trades: archived transaction delete](#manage-trades-archived-transaction-delete).
 
 # Project Rules & Constraints
 - **Git Operations:** NEVER execute `git commit`, `git merge`, or `git push` automatically. You must propose the changes and wait for my explicit "Yes" or "Proceed" for each step.
